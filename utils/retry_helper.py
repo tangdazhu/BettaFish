@@ -4,8 +4,9 @@
 """
 
 import time
+import threading
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 import requests
 from loguru import logger
 
@@ -54,12 +55,13 @@ class RetryConfig:
 # 默认配置
 DEFAULT_RETRY_CONFIG = RetryConfig()
 
-def with_retry(config: RetryConfig = None):
+def with_retry(config: RetryConfig = None, stop_event: Optional[threading.Event] = None):
     """
-    重试装饰器
+    重试装饰器（支持中断）
     
     Args:
         config: 重试配置，如果不提供则使用默认配置
+        stop_event: 停止事件对象，用于中断重试
     
     Returns:
         装饰器函数
@@ -73,6 +75,13 @@ def with_retry(config: RetryConfig = None):
             last_exception = None
             
             for attempt in range(config.max_retries + 1):  # +1 因为第一次不算重试
+                # 检查停止信号
+                if stop_event:
+                    logger.debug(f"检查停止事件状态: {stop_event.is_set()}")
+                    if stop_event.is_set():
+                        logger.info(f"检测到停止信号，中止重试")
+                        raise InterruptedError("用户请求停止")
+                
                 try:
                     result = func(*args, **kwargs)
                     if attempt > 0:
@@ -97,7 +106,12 @@ def with_retry(config: RetryConfig = None):
                     logger.warning(f"函数 {func.__name__} 第 {attempt + 1} 次尝试失败: {str(e)}")
                     logger.info(f"将在 {delay:.1f} 秒后进行第 {attempt + 2} 次尝试...")
                     
-                    time.sleep(delay)
+                    # 使用可中断的睡眠
+                    try:
+                        interruptible_sleep(delay, stop_event=stop_event)
+                    except InterruptedError:
+                        logger.info("重试被用户中断")
+                        raise
                 
                 except Exception as e:
                     # 不在重试列表中的异常，直接抛出
@@ -138,7 +152,41 @@ class RetryableError(Exception):
     """自定义的可重试异常"""
     pass
 
-def with_graceful_retry(config: RetryConfig = None, default_return=None):
+class InterruptedError(Exception):
+    """任务被中断异常"""
+    pass
+
+def interruptible_sleep(duration: float, check_interval: float = 0.5, stop_event: Optional[threading.Event] = None):
+    """
+    可中断的睡眠函数
+    
+    Args:
+        duration: 总睡眠时间（秒）
+        check_interval: 检查停止信号的间隔（秒）
+        stop_event: 停止事件对象
+    
+    Raises:
+        InterruptedError: 当检测到停止信号时抛出
+    """
+    if stop_event is None:
+        # 如果没有提供停止事件，使用普通 sleep
+        logger.debug(f"可中断睡眠: 没有停止事件，使用普通睡眠 {duration}秒")
+        time.sleep(duration)
+        return
+    
+    logger.debug(f"可中断睡眠开始: 总时长 {duration}秒，每 {check_interval}秒检查一次")
+    elapsed = 0.0
+    while elapsed < duration:
+        if stop_event.is_set():
+            logger.info(f"检测到停止信号，中断等待（已等待 {elapsed:.1f}秒）")
+            raise InterruptedError("用户请求停止")
+        
+        sleep_time = min(check_interval, duration - elapsed)
+        time.sleep(sleep_time)
+        elapsed += sleep_time
+        logger.debug(f"可中断睡眠检查: 已等待 {elapsed:.1f}/{duration}秒")
+
+def with_graceful_retry(config: RetryConfig = None, default_return=None, stop_event: Optional[threading.Event] = None):
     """
     优雅重试装饰器 - 用于非关键API调用
     失败后不会抛出异常，而是返回默认值，保证系统继续运行
@@ -146,6 +194,7 @@ def with_graceful_retry(config: RetryConfig = None, default_return=None):
     Args:
         config: 重试配置，如果不提供则使用默认配置
         default_return: 所有重试失败后返回的默认值
+        stop_event: 停止事件对象，用于中断重试
     
     Returns:
         装饰器函数
@@ -159,6 +208,11 @@ def with_graceful_retry(config: RetryConfig = None, default_return=None):
             last_exception = None
             
             for attempt in range(config.max_retries + 1):  # +1 因为第一次不算重试
+                # 检查停止信号
+                if stop_event and stop_event.is_set():
+                    logger.info(f"检测到停止信号，中止非关键API {func.__name__} 的重试")
+                    return default_return
+                
                 try:
                     result = func(*args, **kwargs)
                     if attempt > 0:
@@ -184,7 +238,12 @@ def with_graceful_retry(config: RetryConfig = None, default_return=None):
                     logger.warning(f"非关键API {func.__name__} 第 {attempt + 1} 次尝试失败: {str(e)}")
                     logger.info(f"将在 {delay:.1f} 秒后进行第 {attempt + 2} 次尝试...")
                     
-                    time.sleep(delay)
+                    # 使用可中断的睡眠
+                    try:
+                        interruptible_sleep(delay, stop_event=stop_event)
+                    except InterruptedError:
+                        logger.info(f"非关键API {func.__name__} 的重试被用户中断")
+                        return default_return
                 
                 except Exception as e:
                     # 不在重试列表中的异常，返回默认值

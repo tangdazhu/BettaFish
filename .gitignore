@@ -102,7 +102,7 @@ celerybeat.pid
 
 # ==== 环境和IDE ====
 # Environments
-.env
+
 .venv
 env/
 venv/

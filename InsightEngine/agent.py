@@ -6,6 +6,7 @@ Deep Search Agent主类
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Union
 from loguru import logger
@@ -28,14 +29,16 @@ from .utils import format_search_results_for_prompt
 class DeepSearchAgent:
     """Deep Search Agent主类"""
     
-    def __init__(self, config: Optional[Settings] = None):
+    def __init__(self, config: Optional[Settings] = None, stop_event: Optional[threading.Event] = None):
         """
         初始化Deep Search Agent
         
         Args:
             config: 可选配置对象（不填则用全局settings）
+            stop_event: 停止事件对象，用于中断任务
         """
         self.config = config or settings
+        self.stop_event = stop_event
         
         # 初始化LLM客户端
         self.llm_client = self._initialize_llm()
@@ -67,6 +70,7 @@ class DeepSearchAgent:
             api_key=self.config.INSIGHT_ENGINE_API_KEY,
             model_name=self.config.INSIGHT_ENGINE_MODEL_NAME,
             base_url=self.config.INSIGHT_ENGINE_BASE_URL,
+            stop_event=self.stop_event,
         )
     
     def _initialize_nodes(self):
@@ -426,6 +430,12 @@ class DeepSearchAgent:
         total_paragraphs = len(self.state.paragraphs)
         
         for i in range(total_paragraphs):
+            # 检查停止信号
+            if self.stop_event and self.stop_event.is_set():
+                logger.info("检测到停止信号，中止段落处理")
+                from .llms.base import InterruptedError
+                raise InterruptedError("用户请求停止")
+            
             logger.info(f"\n[步骤 2.{i+1}] 处理段落: {self.state.paragraphs[i].title}")
             logger.info("-" * 50)
             

@@ -6,6 +6,7 @@ Deep Search Agent主类
 import json
 import os
 import re
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
@@ -26,22 +27,27 @@ from loguru import logger
 class DeepSearchAgent:
     """Deep Search Agent主类"""
     
-    def __init__(self, config: Optional[Settings] = None):
+    def __init__(self, config: Optional[Settings] = None, stop_event: Optional[threading.Event] = None):
         """
         初始化Deep Search Agent
         
         Args:
             config: 配置对象，如果不提供则自动加载
+            stop_event: 停止事件对象，用于中断任务
         """
         # 加载配置
         from .utils.config import settings
         self.config = config or settings
+        self.stop_event = stop_event
         
         # 初始化LLM客户端
         self.llm_client = self._initialize_llm()
         
         # 初始化搜索工具集
-        self.search_agency = TavilyNewsAgency(api_key=self.config.TAVILY_API_KEY)
+        self.search_agency = TavilyNewsAgency(
+            api_key=self.config.TAVILY_API_KEY,
+            stop_event=self.stop_event
+        )
         
         # 初始化节点
         self._initialize_nodes()
@@ -62,6 +68,7 @@ class DeepSearchAgent:
             api_key=self.config.QUERY_ENGINE_API_KEY,
             model_name=self.config.QUERY_ENGINE_MODEL_NAME,
             base_url=self.config.QUERY_ENGINE_BASE_URL,
+            stop_event=self.stop_event,
         )
     
     def _initialize_nodes(self):
@@ -199,6 +206,12 @@ class DeepSearchAgent:
         total_paragraphs = len(self.state.paragraphs)
         
         for i in range(total_paragraphs):
+            # 检查停止信号
+            if self.stop_event and self.stop_event.is_set():
+                logger.info("检测到停止信号，中止段落处理")
+                from .llms.base import InterruptedError
+                raise InterruptedError("用户请求停止")
+            
             logger.info(f"\n[步骤 2.{i+1}] 处理段落: {self.state.paragraphs[i].title}")
             logger.info("-" * 50)
             

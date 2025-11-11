@@ -5,6 +5,8 @@ Streamlit Web界面
 
 import os
 import sys
+import time
+import threading
 import streamlit as st
 from datetime import datetime
 import json
@@ -36,14 +38,21 @@ def main():
     """主函数"""
     st.set_page_config(
         page_title="Media Agent",
-        page_icon="",
+        page_icon="🎥",
         layout="wide"
     )
 
-    st.title("Media Agent")
+    st.title("🎥 Media Agent")
     st.markdown("具备强大多模态能力的AI代理")
     st.markdown("突破传统文本交流限制，广泛的浏览抖音、快手、小红书的视频、图文、直播")
     st.markdown("使用现代化搜索引擎提供的诸如日历卡、天气卡、股票卡等多模态结构化信息进一步增强能力")
+    
+    # 初始化停止事件和运行状态
+    if 'stop_event' not in st.session_state:
+        st.session_state.stop_event = threading.Event()
+    
+    if 'is_running' not in st.session_state:
+        st.session_state.is_running = False
 
     # 检查URL参数
     try:
@@ -69,15 +78,32 @@ def main():
     # 如果有自动查询，使用它作为默认值，否则显示占位符
     display_query = auto_query if auto_query else "等待从主页面接收分析内容..."
 
-    # 只读的查询展示区域
-    st.text_area(
-        "当前查询",
-        value=display_query,
-        height=100,
-        disabled=True,
-        help="查询内容由主页面的搜索框控制",
-        label_visibility="hidden"
-    )
+    # 查询展示区域和停止按钮
+    col1, col2 = st.columns([4, 1])
+    
+    with col1:
+        st.text_area(
+            "当前查询",
+            value=display_query,
+            height=100,
+            disabled=True,
+            help="查询内容由主页面的搜索框控制",
+            label_visibility="hidden"
+        )
+    
+    with col2:
+        st.write("")  # 添加一些垂直空间
+        st.write("")  # 对齐按钮位置
+        if st.session_state.is_running:
+            if st.button("⏹️ 停止", type="secondary", use_container_width=True, key="stop_button"):
+                logger.info("=" * 50)
+                logger.info("用户点击了停止按钮")
+                st.session_state.stop_event.set()
+                logger.info(f"停止事件已设置: {st.session_state.stop_event.is_set()}")
+                logger.info("=" * 50)
+                st.warning("⏹️ 正在停止任务，请稍候...")
+        else:
+            st.button("⏹️ 停止", type="secondary", use_container_width=True, disabled=True, key="stop_button_disabled")
 
     # 自动搜索逻辑
     start_research = False
@@ -125,69 +151,162 @@ def main():
         execute_research(query, config)
 
 
-def execute_research(query: str, config: Settings):
-    """执行研究"""
+def _run_research_in_thread(query: str, config: Settings, stop_event: threading.Event, result_container: dict):
+    """在后台线程中运行研究任务"""
     try:
-        # 创建进度条
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
         # 初始化Agent
-        status_text.text("正在初始化Agent...")
-        agent = DeepSearchAgent(config)
-        st.session_state.agent = agent
-
-        progress_bar.progress(10)
+        agent = DeepSearchAgent(config, stop_event=stop_event)
+        result_container['agent'] = agent
+        result_container['task_result'] = {"status": "初始化完成", "progress": 10}
 
         # 生成报告结构
-        status_text.text("正在生成报告结构...")
+        result_container['task_result'] = {"status": "生成报告结构", "progress": 20}
         agent._generate_report_structure(query)
-        progress_bar.progress(20)
 
         # 处理段落
         total_paragraphs = len(agent.state.paragraphs)
         for i in range(total_paragraphs):
-            status_text.text(f"正在处理段落 {i + 1}/{total_paragraphs}: {agent.state.paragraphs[i].title}")
+            # 检查停止信号
+            if stop_event.is_set():
+                result_container['task_result'] = {"status": "已停止", "progress": 0}
+                result_container['task_error'] = "用户请求停止"
+                return
+            
+            result_container['task_result'] = {
+                "status": f"处理段落 {i + 1}/{total_paragraphs}: {agent.state.paragraphs[i].title}",
+                "progress": 20 + int((i + 0.5) / total_paragraphs * 60)
+            }
 
             # 初始搜索和总结
             agent._initial_search_and_summary(i)
-            progress_value = 20 + (i + 0.5) / total_paragraphs * 60
-            progress_bar.progress(int(progress_value))
 
             # 反思循环
             agent._reflection_loop(i)
             agent.state.paragraphs[i].research.mark_completed()
 
-            progress_value = 20 + (i + 1) / total_paragraphs * 60
-            progress_bar.progress(int(progress_value))
+            result_container['task_result'] = {
+                "status": f"完成段落 {i + 1}/{total_paragraphs}",
+                "progress": 20 + int((i + 1) / total_paragraphs * 60)
+            }
 
         # 生成最终报告
-        status_text.text("正在生成最终报告...")
+        result_container['task_result'] = {"status": "生成最终报告", "progress": 90}
         logger.info("正在生成最终报告...")
         final_report = agent._generate_final_report()
-        progress_bar.progress(90)
 
         # 保存报告
-        status_text.text("正在保存报告...")
+        result_container['task_result'] = {"status": "保存报告", "progress": 95}
         logger.info("正在保存报告...")
         agent._save_report(final_report)
-        progress_bar.progress(100)
 
-        status_text.text("研究完成！")
+        result_container['task_result'] = {
+            "status": "完成",
+            "progress": 100,
+            "final_report": final_report
+        }
         logger.info("研究完成！")
-        # 显示结果
-        display_results(agent, final_report)
+
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        
+        # 检查是否是用户中断
+        if "InterruptedError" in error_traceback or "用户请求停止" in str(e):
+            result_container['task_result'] = {"status": "已停止", "progress": 0}
+            result_container['task_error'] = "用户请求停止"
+            logger.info("任务被用户停止")
+        else:
+            result_container['task_error'] = error_traceback
+            logger.error(f"研究过程中发生错误: {str(e)}")
+    finally:
+        result_container['is_running'] = False
+
+
+def execute_research(query: str, config: Settings):
+    """执行研究（启动后台线程并轮询）"""
+    try:
+        # 重置停止事件和状态
+        st.session_state.stop_event.clear()
+        st.session_state.is_running = True
+        st.session_state.task_result = {"status": "启动中", "progress": 0}
+        st.session_state.task_error = None
+        
+        # 创建结果容器（用于线程间通信）
+        result_container = {
+            'agent': None,
+            'task_result': None,
+            'task_error': None,
+            'is_running': True
+        }
+        st.session_state.result_container = result_container
+        
+        # 启动后台线程
+        task_thread = threading.Thread(
+            target=_run_research_in_thread,
+            args=(query, config, st.session_state.stop_event, result_container),
+            daemon=True
+        )
+        task_thread.start()
+        st.session_state.task_thread = task_thread
+        
+        # 创建进度条和状态显示
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # 轮询任务状态
+        while result_container['is_running']:
+            # 从 result_container 同步到 session_state（用于显示）
+            if result_container['task_result']:
+                st.session_state.task_result = result_container['task_result']
+                result = result_container['task_result']
+                status_text.text(result.get("status", "运行中"))
+                progress_bar.progress(result.get("progress", 0))
+                
+                # 检查是否完成
+                if result.get("status") == "完成":
+                    status_text.text("研究完成！")
+                    st.session_state.agent = result_container['agent']
+                    display_results(result_container['agent'], result.get("final_report"))
+                    st.session_state.is_running = False
+                    break
+                elif result.get("status") == "已停止":
+                    status_text.text("任务已被用户停止")
+                    st.warning("✋ 任务已停止")
+                    st.session_state.is_running = False
+                    break
+            
+            # 检查是否有错误
+            if result_container['task_error']:
+                st.session_state.task_error = result_container['task_error']
+                if result_container['task_error'] == "用户请求停止":
+                    st.warning("✋ 任务已被用户停止")
+                    logger.info("任务被用户停止")
+                else:
+                    error_display = error_with_issue_link(
+                        f"研究过程中发生错误",
+                        result_container['task_error'],
+                        app_name="Media Engine Streamlit App"
+                    )
+                    st.error(error_display, icon="🚨")
+                    logger.error(f"错误详情:\n{result_container['task_error']}")
+                st.session_state.is_running = False
+                break
+            
+            # 短暂延迟后刷新
+            time.sleep(0.5)
+            st.rerun()
 
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
         error_display = error_with_issue_link(
-            f"研究过程中发生错误: {str(e)}",
+            f"启动研究任务时发生错误: {str(e)}",
             error_traceback,
             app_name="Media Engine Streamlit App"
         )
-        st.error(error_display)
-        logger.exception(f"研究过程中发生错误: {str(e)}")
+        st.error(error_display, icon="🚨")
+        logger.error(f"错误详情:\n{error_traceback}")
+        st.session_state.is_running = False
 
 
 def display_results(agent: DeepSearchAgent, final_report: str):

@@ -320,6 +320,8 @@ INSIGHT_ENGINE_MODEL_NAME = "kimi-k2-0711-preview"
 #### 4.2 数据库初始化
 
 **选择1：使用本地数据库**
+docker run -d --name bettafish-postgres --restart unless-stopped -e POSTGRES_USER=bettafish -e POSTGRES_PASSWORD=bettafish_2024 -e POSTGRES_DB=bettafish -e TZ=Asia/Shanghai -p 5432:5432 -v bettafish_pgdata:/var/lib/postgresql/data postgres:15.14
+
 
 > ~~MindSpider爬虫系统跟舆情系统是各自独立的，所以需要再去`MindSpider\config.py`配置一下，复制`MindSpider`文件夹下的 `config.py.example` 文件，命名为 `config.py`~~  
 现版本已更改为基于环境变量配置，请复制项目根目录.env.example文件为.env文件，并在其中填写各项配置

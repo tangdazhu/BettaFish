@@ -23,6 +23,7 @@
 
 import os
 import sys
+import threading
 from typing import List, Dict, Any, Optional
 
 # 添加utils目录到Python路径
@@ -80,47 +81,53 @@ class TavilyNewsAgency:
     每个公共方法都设计为供 AI Agent 独立调用的工具。
     """
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, stop_event: Optional[threading.Event] = None):
         """
         初始化客户端。
         Args:
             api_key: Tavily API密钥，若不提供则从环境变量 TAVILY_API_KEY 读取。
+            stop_event: 停止事件对象，用于中断搜索重试。
         """
         if api_key is None:
             api_key = os.getenv("TAVILY_API_KEY")
             if not api_key:
                 raise ValueError("Tavily API Key未找到！请设置TAVILY_API_KEY环境变量或在初始化时提供")
         self._client = TavilyClient(api_key=api_key)
+        self.stop_event = stop_event
 
-    @with_graceful_retry(SEARCH_API_RETRY_CONFIG, default_return=TavilyResponse(query="搜索失败"))
     def _search_internal(self, **kwargs) -> TavilyResponse:
         """内部通用的搜索执行器，所有工具最终都调用此方法"""
-        try:
-            kwargs['topic'] = 'general'
-            api_params = {k: v for k, v in kwargs.items() if v is not None}
-            response_dict = self._client.search(**api_params)
-            
-            search_results = [
-                SearchResult(
-                    title=item.get('title'),
-                    url=item.get('url'),
-                    content=item.get('content'),
-                    score=item.get('score'),
-                    raw_content=item.get('raw_content'),
-                    published_date=item.get('published_date')
-                ) for item in response_dict.get('results', [])
-            ]
-            
-            image_results = [ImageResult(url=item.get('url'), description=item.get('description')) for item in response_dict.get('images', [])]
+        # 使用带停止事件的重试装饰器
+        @with_graceful_retry(SEARCH_API_RETRY_CONFIG, default_return=TavilyResponse(query="搜索失败"), stop_event=self.stop_event)
+        def _do_search():
+            try:
+                kwargs['topic'] = 'general'
+                api_params = {k: v for k, v in kwargs.items() if v is not None}
+                response_dict = self._client.search(**api_params)
+                
+                search_results = [
+                    SearchResult(
+                        title=item.get('title'),
+                        url=item.get('url'),
+                        content=item.get('content'),
+                        score=item.get('score'),
+                        raw_content=item.get('raw_content'),
+                        published_date=item.get('published_date')
+                    ) for item in response_dict.get('results', [])
+                ]
+                
+                image_results = [ImageResult(url=item.get('url'), description=item.get('description')) for item in response_dict.get('images', [])]
 
-            return TavilyResponse(
-                query=response_dict.get('query'), answer=response_dict.get('answer'),
-                results=search_results, images=image_results,
-                response_time=response_dict.get('response_time')
-            )
-        except Exception as e:
-            print(f"搜索时发生错误: {str(e)}")
-            raise e  # 让重试机制捕获并处理
+                return TavilyResponse(
+                    query=response_dict.get('query'), answer=response_dict.get('answer'),
+                    results=search_results, images=image_results,
+                    response_time=response_dict.get('response_time')
+                )
+            except Exception as e:
+                print(f"搜索时发生错误: {str(e)}")
+                raise e  # 让重试机制捕获并处理
+        
+        return _do_search()
 
     # --- Agent 可用的工具方法 ---
 
