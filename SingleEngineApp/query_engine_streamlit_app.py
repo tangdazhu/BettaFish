@@ -110,6 +110,19 @@ def main():
                 logger.info(f"停止事件已设置: {st.session_state.stop_event.is_set()}")
                 logger.info("=" * 50)
                 st.warning("⏹️ 正在停止任务，请稍候...")
+        elif st.session_state.task_result or st.session_state.task_error:
+            # 任务已完成或出错，显示重新运行按钮
+            if st.button("🔄 重新运行", type="primary", use_container_width=True, key="rerun_button"):
+                logger.info("=" * 50)
+                logger.info("用户点击了重新运行按钮")
+                logger.info("=" * 50)
+                # 重置状态
+                st.session_state.task_result = None
+                st.session_state.task_error = None
+                st.session_state.stop_event = threading.Event()
+                if 'auto_search_executed' in st.session_state:
+                    del st.session_state.auto_search_executed
+                st.rerun()
         else:
             st.button("⏹️ 停止", type="secondary", use_container_width=True, disabled=True, key="stop_button_disabled")
 
@@ -152,8 +165,12 @@ def main():
             OUTPUT_DIR="query_engine_streamlit_reports"
         )
 
-        # 执行研究
-        execute_research(query, config)
+        # 启动研究线程
+        start_research_thread(query, config)
+    
+    # 如果任务正在运行，监控进度
+    if st.session_state.is_running:
+        monitor_research_progress()
 
 
 def _run_research_in_thread(query: str, config: Settings, stop_event: threading.Event, result_container: dict):
@@ -166,7 +183,22 @@ def _run_research_in_thread(query: str, config: Settings, stop_event: threading.
 
         # 生成报告结构
         result_container['task_result'] = {"status": "生成报告结构", "progress": 20}
+        
+        # 检查停止信号（在开始生成报告结构前）
+        if stop_event.is_set():
+            result_container['task_result'] = {"status": "已停止", "progress": 0}
+            result_container['task_error'] = "用户请求停止"
+            logger.info("在生成报告结构前检测到停止信号")
+            return
+        
         agent._generate_report_structure(query)
+        
+        # 检查停止信号（在生成报告结构后）
+        if stop_event.is_set():
+            result_container['task_result'] = {"status": "已停止", "progress": 0}
+            result_container['task_error'] = "用户请求停止"
+            logger.info("在生成报告结构后检测到停止信号")
+            return
 
         # 处理段落
         total_paragraphs = len(agent.state.paragraphs)
@@ -175,6 +207,7 @@ def _run_research_in_thread(query: str, config: Settings, stop_event: threading.
             if stop_event.is_set():
                 result_container['task_result'] = {"status": "已停止", "progress": 0}
                 result_container['task_error'] = "用户请求停止"
+                logger.info(f"在处理段落 {i+1} 前检测到停止信号")
                 return
             
             result_container['task_result'] = {
@@ -224,8 +257,103 @@ def _run_research_in_thread(query: str, config: Settings, stop_event: threading.
         result_container['is_running'] = False
 
 
+def start_research_thread(query: str, config: Settings):
+    """启动研究线程"""  
+    # 重置停止事件和状态
+    st.session_state.stop_event.clear()
+    st.session_state.is_running = True
+    st.session_state.task_result = {"status": "启动中", "progress": 0}
+    st.session_state.task_error = None
+    
+    # 创建结果容器（用于线程间通信）
+    result_container = {
+        'agent': None,
+        'task_result': None,
+        'task_error': None,
+        'is_running': True
+    }
+    st.session_state.result_container = result_container
+    
+    # 启动后台线程
+    task_thread = threading.Thread(
+        target=_run_research_in_thread,
+        args=(query, config, st.session_state.stop_event, result_container),
+        daemon=True
+    )
+    task_thread.start()
+    st.session_state.task_thread = task_thread
+    logger.info("后台研究线程已启动")
+    
+    # 刷新页面以启动监控
+    st.rerun()
+
+
+def monitor_research_progress():
+    """监控研究进度（每次 st.rerun() 后都会执行）"""
+    if 'result_container' not in st.session_state:
+        return
+    
+    result_container = st.session_state.result_container
+    
+    # 创建进度条和状态显示
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # 先检查是否有错误（无论任务是否还在运行）
+    if result_container.get('task_error'):
+        st.session_state.task_error = result_container['task_error']
+        if result_container['task_error'] == "用户请求停止":
+            st.warning("✋ 任务已被用户停止")
+            logger.info("任务被用户停止")
+        else:
+            error_display = error_with_issue_link(
+                f"研究过程中发生错误",
+                result_container['task_error'],
+                app_name="Query Engine Streamlit App"
+            )
+            st.error(error_display, icon="🚨")
+            logger.error(f"错误详情:\n{result_container['task_error']}")
+        st.session_state.is_running = False
+        # 刷新页面以显示重新运行按钮
+        time.sleep(0.5)
+        st.rerun()
+        return
+    
+    # 检查任务状态
+    if result_container['is_running']:
+        # 从 result_container 同步到 session_state（用于显示）
+        if result_container['task_result']:
+            st.session_state.task_result = result_container['task_result']
+            result = result_container['task_result']
+            status_text.text(result.get("status", "运行中"))
+            progress_bar.progress(result.get("progress", 0))
+            
+            # 检查是否完成
+            if result.get("status") == "完成":
+                status_text.text("研究完成！")
+                st.session_state.agent = result_container['agent']
+                display_results(result_container['agent'], result.get("final_report"))
+                st.session_state.is_running = False
+                return
+            elif result.get("status") == "已停止":
+                status_text.text("任务已被用户停止")
+                st.warning("✋ 任务已停止")
+                st.session_state.is_running = False
+                # 刷新页面以显示重新运行按钮
+                time.sleep(0.5)
+                st.rerun()
+                return
+        
+        # 继续刷新以更新进度
+        time.sleep(0.5)
+        st.rerun()
+    else:
+        # 任务已结束但没有错误，可能是正常完成
+        st.session_state.is_running = False
+
+
 def execute_research(query: str, config: Settings):
-    """执行研究（启动后台线程并轮询）"""
+    """执行研究（已废弃，保留用于兼容）"""
     try:
         # 重置停止事件和状态
         st.session_state.stop_event.clear()
@@ -275,26 +403,31 @@ def execute_research(query: str, config: Settings):
                     status_text.text("任务已被用户停止")
                     st.warning("✋ 任务已停止")
                     st.session_state.is_running = False
+                    # 刷新页面以显示重新运行按钮
+                    time.sleep(0.5)
+                    st.rerun()
                     break
             
-            # 检查是否有错误
-            if result_container['task_error']:
-                st.session_state.task_error = result_container['task_error']
-                if result_container['task_error'] == "用户请求停止":
-                    st.warning("✋ 任务已被用户停止")
-                    logger.info("任务被用户停止")
-                else:
-                    error_display = error_with_issue_link(
-                        f"研究过程中发生错误",
-                        result_container['task_error'],
-                        app_name="Query Engine Streamlit App"
-                    )
-                    st.error(error_display, icon="🚨")
-                    logger.error(f"错误详情:\n{result_container['task_error']}")
-                st.session_state.is_running = False
-                break
-            
             # 短暂延迟后刷新
+            time.sleep(0.5)
+            st.rerun()
+        
+        # 循环结束后，检查是否有错误（关键修复：将错误检查移到循环外）
+        if result_container.get('task_error'):
+            st.session_state.task_error = result_container['task_error']
+            if result_container['task_error'] == "用户请求停止":
+                st.warning("✋ 任务已被用户停止")
+                logger.info("任务被用户停止")
+            else:
+                error_display = error_with_issue_link(
+                    f"研究过程中发生错误",
+                    result_container['task_error'],
+                    app_name="Query Engine Streamlit App"
+                )
+                st.error(error_display, icon="🚨")
+                logger.error(f"错误详情:\n{result_container['task_error']}")
+            st.session_state.is_running = False
+            # 刷新页面以显示重新运行按钮
             time.sleep(0.5)
             st.rerun()
 

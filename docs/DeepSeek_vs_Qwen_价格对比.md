@@ -1,3 +1,14 @@
+# 各个模型价格说明URL
+1. kimi
+https://platform.moonshot.cn/docs/pricing/chat#%E8%AE%A1%E8%B4%B9%E5%9F%BA%E6%9C%AC%E6%A6%82%E5%BF%B5
+
+2. deepseek
+https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+
+3. qwen
+https://help.aliyun.com/zh/model-studio/model-pricing?spm=a2c4g.11186623.help-menu-2400256.d_0_0_3.bdd429da8xmWhz&scm=20140722.H_2987148._.OR_help-T_cn~zh-V_1
+
+
 # DeepSeek vs 通义千问 价格对比分析
 
 > BettaFish 项目 LLM 成本优化指南  
