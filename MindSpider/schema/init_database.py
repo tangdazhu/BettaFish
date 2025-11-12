@@ -33,6 +33,7 @@ sys.path.append(str(project_root))
 
 from config import settings
 
+
 def _env(key: str, default: Optional[str] = None) -> Optional[str]:
     v = os.getenv(key)
     return v if v not in (None, "") else default
@@ -90,6 +91,7 @@ async def _create_views_if_needed(engine_dialect: str):
 
     # PostgreSQL 的 CREATE OR REPLACE VIEW 也可用；两端均执行
     from sqlalchemy.ext.asyncio import AsyncEngine
+
     engine: AsyncEngine = create_async_engine(_build_database_url())
     async with engine.begin() as conn:
         await conn.execute(text(v_topic_crawling_stats))
@@ -116,5 +118,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
