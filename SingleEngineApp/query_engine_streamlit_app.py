@@ -290,10 +290,18 @@ def start_research_thread(query: str, config: Settings):
 
 def monitor_research_progress():
     """监控研究进度（每次 st.rerun() 后都会执行）"""
+    logger.info("[监控] monitor_research_progress() 被调用")
     if 'result_container' not in st.session_state:
+        logger.info("[监控] result_container 不存在，退出监控")
         return
     
     result_container = st.session_state.result_container
+    logger.info(f"[监控] is_running={st.session_state.is_running}")
+    logger.info(f"[监控] result_container['is_running']={result_container.get('is_running')}")
+    
+    # 添加一个明显的分隔线和标题
+    st.markdown("---")
+    st.subheader("📊 研究进度")
     
     # 创建进度条和状态显示
     progress_bar = st.progress(0)
