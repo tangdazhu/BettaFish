@@ -24,6 +24,29 @@ def clean_json_tags(text: str) -> str:
     text = re.sub(r'```\s*$', '', text)
     text = re.sub(r'```', '', text)
     
+    # 修复 JSON 字符串值中的未转义换行符和中文引号
+    # 匹配 "key": "value" 格式，并转义 value 中的特殊字符
+    def escape_special_chars_in_json_strings(match):
+        key = match.group(1)
+        value = match.group(2)
+        # 处理顺序：先替换中文引号为普通字符，再统一转义
+        # 1. 先替换中文引号为占位符（避免与英文引号冲突）
+        value = value.replace('"', '<<<LEFT_QUOTE>>>').replace('"', '<<<RIGHT_QUOTE>>>')
+        value = value.replace(''', '<<<LEFT_SINGLE>>>').replace(''', '<<<RIGHT_SINGLE>>>')
+        # 2. 转义反斜杠和控制字符
+        value = value.replace('\\', '\\\\')
+        value = value.replace('\n', '\\n')
+        value = value.replace('\r', '\\r')
+        value = value.replace('\t', '\\t')
+        # 3. 将占位符替换为转义后的引号
+        value = value.replace('<<<LEFT_QUOTE>>>', '\\"').replace('<<<RIGHT_QUOTE>>>', '\\"')
+        value = value.replace('<<<LEFT_SINGLE>>>', "\\'").replace('<<<RIGHT_SINGLE>>>', "\\'")
+        return f'"{key}": "{value}"'
+    
+    # 使用正则表达式匹配并修复
+    # 使用非贪婪匹配，匹配到下一个 "} 或 ", 为止
+    text = re.sub(r'"([^"]+)":\s*"(.*?)"(?=\s*[,}])', escape_special_chars_in_json_strings, text, flags=re.DOTALL)
+    
     return text.strip()
 
 

@@ -139,10 +139,17 @@ def main():
     
     # 监控正在运行的任务
     if st.session_state.is_running:
-        logger.info(f"[监控] is_running=True, 调用 monitor_research_progress()")
         monitor_research_progress()
-    else:
-        logger.info(f"[监控] is_running=False, 跳过 monitor_research_progress()")
+        return  # 监控期间不执行后续代码
+    
+    # 如果任务已完成，显示结果
+    if st.session_state.task_result and st.session_state.task_result.get("status") == "完成":
+        if 'result_container' in st.session_state and st.session_state.result_container.get('agent'):
+            display_results(
+                st.session_state.result_container['agent'],
+                st.session_state.task_result.get('final_report')
+            )
+        return
 
     # 验证配置
     if start_research:
@@ -223,16 +230,22 @@ def _run_research_in_thread(query: str, config: Settings, stop_event: threading.
             }
 
             # 初始搜索和总结
+            logger.info(f"开始初始搜索和总结 - 段落 {i+1}")
             agent._initial_search_and_summary(i)
+            logger.info(f"完成初始搜索和总结 - 段落 {i+1}")
 
             # 反思循环
+            logger.info(f"开始反思循环 - 段落 {i+1}")
             agent._reflection_loop(i)
+            logger.info(f"完成反思循环 - 段落 {i+1}")
+            
             agent.state.paragraphs[i].research.mark_completed()
 
             result_container['task_result'] = {
                 "status": f"完成段落 {i + 1}/{total_paragraphs}",
                 "progress": 20 + int((i + 1) / total_paragraphs * 60)
             }
+            logger.info(f"段落 {i+1}/{total_paragraphs} 处理完成")
 
         # 生成最终报告
         result_container['task_result'] = {"status": "生成最终报告", "progress": 90}
@@ -345,10 +358,18 @@ def monitor_research_progress():
         
         # 检查是否完成
         if result.get("status") == "完成":
-            status_text.text("研究完成！")
+            status_text.text("研究完成！正在加载结果...")
+            # 确保 agent 被存储到 session_state 和 result_container 中
             st.session_state.agent = result_container['agent']
-            display_results(result_container['agent'], result.get("final_report"))
+            # 关键：确保 result_container 中的 agent 也被持久化
+            if 'result_container' not in st.session_state:
+                st.session_state.result_container = result_container
+            else:
+                st.session_state.result_container['agent'] = result_container['agent']
             st.session_state.is_running = False
+            # 不在这里显示结果，让 main() 函数处理
+            time.sleep(0.5)
+            st.rerun()
             return
         elif result.get("status") == "已停止":
             status_text.text("任务已被用户停止")
@@ -360,13 +381,34 @@ def monitor_research_progress():
             return
     
     # 检查任务是否仍在运行
-    if result_container['is_running']:
-        # 任务仍在运行，等待1秒后自动刷新
+    while result_container['is_running']:
+        # 任务仍在运行，持续更新进度
+        if result_container['task_result']:
+            result = result_container['task_result']
+            status_text.text(result.get("status", "运行中"))
+            progress_bar.progress(result.get("progress", 0))
+            
+            # 检查是否完成或停止
+            if result.get("status") in ["完成", "已停止"]:
+                break
+        
+        # 等待1秒后继续检查
         time.sleep(1)
-        st.rerun()
-    else:
-        # 任务已结束但没有错误，可能是正常完成
-        st.session_state.is_running = False
+    
+    # 循环结束后，检查最终状态并触发一次 rerun 以显示结果
+    if result_container['task_result']:
+        result = result_container['task_result']
+        if result.get("status") == "完成":
+            # 确保 agent 被存储到 session_state
+            st.session_state.agent = result_container['agent']
+            if 'result_container' not in st.session_state:
+                st.session_state.result_container = result_container
+            else:
+                st.session_state.result_container['agent'] = result_container['agent']
+            st.session_state.is_running = False
+            st.session_state.task_result = result
+            time.sleep(0.5)
+            st.rerun()
 
 
 def execute_research(query: str, config: Settings):
