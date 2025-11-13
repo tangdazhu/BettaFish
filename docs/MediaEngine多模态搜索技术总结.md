@@ -4,8 +4,8 @@
 
 MediaEngine 是 BettaFish 项目的核心组件之一，专门负责**多模态深度搜索和内容分析**。它通过整合多种搜索工具和 AI 分析能力，实现对网页、图片、结构化数据等多种媒体形式的综合分析。
 
-**版本**: 1.1  
-**最后更新**: 2025-11-12  
+**版本**: 1.2  
+**最后更新**: 2025-11-13  
 **核心特性**: 多模态搜索、AI 深度分析、反思迭代优化
 
 ---
@@ -177,6 +177,129 @@ def search_last_week(query: str) -> BochaResponse
 - 🤖 **智能选择**: LLM 根据查询内容自动选择工具
 - 📊 **多模态**: 同时返回网页、图片、AI总结、模态卡
 - 🔄 **无降级**: 所有工具都可正常使用，无需降级机制
+
+---
+
+## ⚠️ 常见问题与故障排查
+
+### 问题 1: 搜索返回 0 结果
+
+**症状**：
+```
+INFO | MediaEngine.tools.search:comprehensive_search - --- TOOL: 全面综合搜索 (query: xxx) ---
+INFO | MediaEngine.agent:_initial_search_and_summary - 未找到搜索结果
+```
+
+**可能原因**：
+
+#### 1. Bocha API Key 无效或过期
+```env
+# 检查 .env 配置
+BOCHA_WEB_SEARCH_API_KEY=sk-xxx  # 确认 API Key 是否正确
+```
+
+**验证方法**：
+```bash
+# 测试 Bocha API
+curl -X POST https://api.bochaai.com/v1/web-search \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "人工智能",
+    "freshness": "noLimit",
+    "summary": true
+  }'
+```
+
+**预期结果**：
+- ✅ 成功：返回包含 `webpages`、`images` 等字段的 JSON
+- ❌ 失败：返回错误信息（如 `invalid_api_key`、`quota_exceeded`）
+
+#### 2. API 配额不足
+- 登录 [Bocha 控制台](https://open.bochaai.com/) 检查配额
+- 查看 API 调用次数和剩余额度
+- 必要时充值或升级套餐
+
+#### 3. 网络连接问题
+```bash
+# 测试网络连接
+ping api.bochaai.com
+
+# 检查防火墙规则
+# 确保允许访问 Bocha API 的域名和端口
+```
+
+#### 4. API 返回错误但被静默处理
+**启用详细日志**：
+```python
+# 修改 MediaEngine/tools/search.py
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# 在搜索失败时记录详细错误
+logger.error(f"Bocha API 错误: {response.status_code}")
+logger.error(f"错误详情: {response.text}")
+```
+
+**影响**：
+- 所有搜索都返回 0 结果
+- LLM 只能基于通用知识生成内容
+- 报告质量严重下降（可能只有几百字符）
+- 无法引用真实的网页、图片、数据
+
+**解决方案**：
+1. 验证 API Key 有效性
+2. 检查 API 配额是否充足
+3. 测试网络连接
+4. 启用详细日志查看具体错误
+5. 考虑使用备用搜索 API（如 Google Custom Search）
+
+---
+
+### 问题 2: 报告生成过短
+
+**症状**：
+- 预期报告：7-10 万字
+- 实际报告：几百字符
+
+**根本原因**：
+搜索失败导致 LLM 无法获取真实数据，只能基于通用知识生成简短内容。
+
+**诊断方法**：
+1. 检查日志中的搜索结果数量
+2. 统计"未找到搜索结果"的次数
+3. 验证 Bocha API 是否正常工作
+
+**解决方案**：
+参考"问题 1: 搜索返回 0 结果"的解决方案。
+
+---
+
+### 问题 3: LLM 配置 vs 搜索 API 配置
+
+**重要区分**：
+
+| 配置项 | 用途 | 示例 |
+|--------|------|------|
+| `MEDIA_ENGINE_MODEL_NAME` | LLM 内容生成 | `qwen-vl-plus` |
+| `BOCHA_WEB_SEARCH_API_KEY` | 网络搜索 | `sk-xxx` |
+
+**工作流程**：
+```
+用户查询
+    ↓
+MediaEngine 使用 qwen-vl-plus LLM 生成搜索查询
+    ↓
+调用 Bocha Web Search API 进行网络搜索
+    ↓
+Bocha API 返回搜索结果（网页、图片、数据）
+    ↓
+MediaEngine 使用 qwen-vl-plus LLM 分析结果并生成报告
+```
+
+**常见误解**：
+- ❌ 错误：认为 MediaEngine 的 LLM 就是搜索引擎
+- ✅ 正确：MediaEngine 使用 LLM 生成内容，使用 Bocha API 搜索数据
 
 ---
 
@@ -594,5 +717,19 @@ stop_event.set()
 ---
 
 **文档维护**: BettaFish 项目组  
-**最后更新**: 2025-11-12  
-**版本**: v1.0
+**最后更新**: 2025-11-13  
+**版本**: v1.2
+
+---
+
+## 📝 更新日志
+
+### v1.2 (2025-11-13)
+- ✅ 新增"常见问题与故障排查"章节
+- ✅ 详细说明搜索返回 0 结果的诊断和解决方案
+- ✅ 澄清 LLM 配置与搜索 API 配置的区别
+- ✅ 添加报告生成过短问题的排查方法
+- ✅ 提供 Bocha API 测试命令和验证方法
+
+### v1.1 (2025-11-12)
+- 初始版本发布

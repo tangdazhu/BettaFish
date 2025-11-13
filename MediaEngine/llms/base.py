@@ -81,8 +81,13 @@ class LLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-        allowed_keys = {"temperature", "top_p", "presence_penalty", "frequency_penalty", "stream"}
+        allowed_keys = {"temperature", "top_p", "presence_penalty", "frequency_penalty", "stream", "max_tokens"}
         extra_params = {key: value for key, value in kwargs.items() if key in allowed_keys and value is not None}
+        
+        # 如果没有指定 max_tokens，设置一个合理的默认值
+        # Kimi moonshot 系列模型支持更大的输出长度
+        if "max_tokens" not in extra_params:
+            extra_params["max_tokens"] = 8000  # 默认值，约 5600-6400 字中文
 
         timeout = kwargs.pop("timeout", self.timeout)
 

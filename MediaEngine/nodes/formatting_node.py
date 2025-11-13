@@ -68,10 +68,12 @@ class ReportFormattingNode(BaseNode):
             
             logger.info("正在格式化最终报告")
             
-            # 调用LLM生成Markdown格式
+            # 调用LLM生成Markdown格式（设置大的 max_tokens 以支持长报告）
+            # qwen3-max 支持 65536 tokens 输出，262K 上下文
             response = self.llm_client.invoke(
                 SYSTEM_PROMPT_REPORT_FORMATTING,
                 message,
+                max_tokens=32000,  # qwen3-max 支持超大输出，32000 tokens ≈ 22000-25000 字中文
             )
             
             # 处理响应

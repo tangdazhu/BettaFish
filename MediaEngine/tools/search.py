@@ -114,11 +114,49 @@ class BochaMultimodalSearch:
         }
 
     def _parse_search_response(self, response_dict: Dict[str, Any], query: str) -> BochaResponse:
-        """从API的原始字典响应中解析出结构化的BochaResponse对象"""
+        """从API的原始字典响应中解析出结构化的BochaResponse对象
+        
+        支持两种响应格式：
+        1. AI Search 格式：{"code": 200, "messages": [...]}
+        2. Web Search 格式：{"code": 200, "data": {"webPages": {...}, "images": {...}}}
+        """
 
         final_response = BochaResponse(query=query)
         final_response.conversation_id = response_dict.get('conversation_id')
 
+        # 检查是否是 Web Search 格式
+        if 'data' in response_dict and response_dict['data']:
+            data = response_dict['data']
+            
+            # 解析网页结果
+            if 'webPages' in data and data['webPages']:
+                web_results = data['webPages'].get('value', [])
+                for item in web_results:
+                    final_response.webpages.append(WebpageResult(
+                        name=item.get('name'),
+                        url=item.get('url'),
+                        snippet=item.get('snippet'),
+                        display_url=item.get('displayUrl'),
+                        date_last_crawled=item.get('dateLastCrawled')
+                    ))
+            
+            # 解析图片结果
+            if 'images' in data and data['images']:
+                image_results = data['images'].get('value', [])
+                for item in image_results:
+                    final_response.images.append(ImageResult(
+                        name=item.get('name'),
+                        content_url=item.get('contentUrl'),
+                        host_page_url=item.get('hostPageUrl'),
+                        thumbnail_url=item.get('thumbnailUrl'),
+                        width=item.get('width', 0),
+                        height=item.get('height', 0)
+                    ))
+            
+            logger.info(f"✅ 解析 Web Search 格式 - 网页: {len(final_response.webpages)}, 图片: {len(final_response.images)}")
+            return final_response
+
+        # 否则尝试解析 AI Search 格式
         messages = response_dict.get('messages', [])
         for msg in messages:
             role = msg.get('role')
@@ -185,11 +223,27 @@ class BochaMultimodalSearch:
             response.raise_for_status()  # 如果HTTP状态码是4xx或5xx，则抛出异常
 
             response_dict = response.json()
+            
+            # 记录完整的 API 响应以便调试
+            logger.debug(f"Bocha API 完整响应: {json.dumps(response_dict, ensure_ascii=False, indent=2)}")
+            
             if response_dict.get("code") != 200:
-                logger.error(f"API返回错误: {response_dict.get('msg', '未知错误')}")
-                return BochaResponse(query=query)
+                error_msg = response_dict.get('msg', '未知错误')
+                error_code = response_dict.get('code')
+                logger.error(f"❌ Bocha API 返回错误 [代码: {error_code}]: {error_msg}")
+                logger.error(f"完整响应: {json.dumps(response_dict, ensure_ascii=False, indent=2)}")
+                
+                # 抛出异常而不是返回空结果，这样错误会更明显
+                raise Exception(f"Bocha API 错误 [{error_code}]: {error_msg}")
+                # return BochaResponse(query=query)
 
-            return self._parse_search_response(response_dict, query)
+            # 解析响应
+            parsed_response = self._parse_search_response(response_dict, query)
+            
+            # 记录搜索结果统计
+            logger.info(f"✅ Bocha API 成功 - 网页: {len(parsed_response.webpages)}, 图片: {len(parsed_response.images)}, 模态卡: {len(parsed_response.modal_cards)}")
+            
+            return parsed_response
 
         except requests.exceptions.RequestException as e:
             logger.exception(f"搜索时发生网络错误: {str(e)}")
