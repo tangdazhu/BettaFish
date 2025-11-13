@@ -256,6 +256,15 @@ class ReflectionNode(BaseNode):
                         return self._get_default_reflection_query()
             
             # 验证和清理结果
+            # 检查是否返回了列表（多个查询）
+            if isinstance(result, list):
+                logger.warning(f"LLM返回了列表（{len(result)}个查询），只使用第一个")
+                if len(result) > 0:
+                    result = result[0]
+                else:
+                    logger.error("返回的列表为空，使用默认查询")
+                    return self._get_default_reflection_query()
+            
             search_query = result.get("search_query", "")
             reasoning = result.get("reasoning", "")
             
