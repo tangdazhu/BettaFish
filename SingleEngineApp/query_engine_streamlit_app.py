@@ -133,6 +133,10 @@ def main():
         start_research = True
     elif auto_query and not auto_search:
         st.warning("等待搜索启动信号...")
+    
+    # 监控正在运行的任务
+    if st.session_state.is_running:
+        monitor_research_progress()
 
     # 验证配置
     if start_research:
@@ -165,10 +169,6 @@ def main():
 
         # 启动研究线程
         start_research_thread(query, config)
-    
-    # 如果任务正在运行，监控进度
-    if st.session_state.is_running:
-        monitor_research_progress()
 
 
 def _run_research_in_thread(query: str, config: Settings, stop_event: threading.Event, result_container: dict):
@@ -266,7 +266,7 @@ def start_research_thread(query: str, config: Settings):
     # 创建结果容器（用于线程间通信）
     result_container = {
         'agent': None,
-        'task_result': None,
+        'task_result': {"status": "启动中", "progress": 0},  # 初始化为启动状态
         'task_error': None,
         'is_running': True
     }
@@ -321,33 +321,33 @@ def monitor_research_progress():
         st.rerun()
         return
     
-    # 检查任务状态
-    if result_container['is_running']:
-        # 从 result_container 同步到 session_state（用于显示）
-        if result_container['task_result']:
-            st.session_state.task_result = result_container['task_result']
-            result = result_container['task_result']
-            status_text.text(result.get("status", "运行中"))
-            progress_bar.progress(result.get("progress", 0))
-            
-            # 检查是否完成
-            if result.get("status") == "完成":
-                status_text.text("研究完成！")
-                st.session_state.agent = result_container['agent']
-                display_results(result_container['agent'], result.get("final_report"))
-                st.session_state.is_running = False
-                return
-            elif result.get("status") == "已停止":
-                status_text.text("任务已被用户停止")
-                st.warning("✋ 任务已停止")
-                st.session_state.is_running = False
-                # 刷新页面以显示重新运行按钮
-                time.sleep(0.5)
-                st.rerun()
-                return
+    # 先检查是否有任务结果（无论 is_running 状态如何）
+    if result_container['task_result']:
+        st.session_state.task_result = result_container['task_result']
+        result = result_container['task_result']
+        status_text.text(result.get("status", "运行中"))
+        progress_bar.progress(result.get("progress", 0))
         
-        # 继续刷新以更新进度
-        time.sleep(0.5)
+        # 检查是否完成
+        if result.get("status") == "完成":
+            status_text.text("研究完成！")
+            st.session_state.agent = result_container['agent']
+            display_results(result_container['agent'], result.get("final_report"))
+            st.session_state.is_running = False
+            return
+        elif result.get("status") == "已停止":
+            status_text.text("任务已被用户停止")
+            st.warning("✋ 任务已停止")
+            st.session_state.is_running = False
+            # 刷新页面以显示重新运行按钮
+            time.sleep(0.5)
+            st.rerun()
+            return
+    
+    # 检查任务是否仍在运行
+    if result_container['is_running']:
+        # 任务仍在运行，等待1秒后自动刷新
+        time.sleep(1)
         st.rerun()
     else:
         # 任务已结束但没有错误，可能是正常完成

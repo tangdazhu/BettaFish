@@ -341,33 +341,33 @@ def monitor_research_progress():
         st.rerun()
         return
     
-    # 检查任务状态（单次检查，不循环）
-    if result_container['is_running']:
-        # 从 result_container 同步到 session_state（用于显示）
-        if result_container['task_result']:
-            st.session_state.task_result = result_container['task_result']
-            result = result_container['task_result']
-            status_text.text(result.get("status", "运行中"))
-            progress_bar.progress(result.get("progress", 0))
-            
-            # 检查是否完成
-            if result.get("status") == "完成":
-                status_text.text("研究完成！")
-                st.session_state.agent = result_container['agent']
-                display_results(result_container['agent'], result.get("final_report"))
-                st.session_state.is_running = False
-                return
-            elif result.get("status") == "已停止":
-                status_text.text("任务已被用户停止")
-                st.warning("✋ 任务已停止")
-                st.session_state.is_running = False
-                # 刷新页面以显示重新运行按钮
-                time.sleep(0.5)
-                st.rerun()
-                return
+    # 先检查是否有任务结果（无论 is_running 状态如何）
+    if result_container['task_result']:
+        st.session_state.task_result = result_container['task_result']
+        result = result_container['task_result']
+        status_text.text(result.get("status", "运行中"))
+        progress_bar.progress(result.get("progress", 0))
         
-        # 继续刷新以更新进度
-        time.sleep(0.5)
+        # 检查是否完成
+        if result.get("status") == "完成":
+            status_text.text("研究完成！")
+            st.session_state.agent = result_container['agent']
+            display_results(result_container['agent'], result.get("final_report"))
+            st.session_state.is_running = False
+            return
+        elif result.get("status") == "已停止":
+            status_text.text("任务已被用户停止")
+            st.warning("✋ 任务已停止")
+            st.session_state.is_running = False
+            # 刷新页面以显示重新运行按钮
+            time.sleep(0.5)
+            st.rerun()
+            return
+    
+    # 检查任务是否仍在运行
+    if result_container['is_running']:
+        # 任务仍在运行，等待1秒后自动刷新
+        time.sleep(1)
         st.rerun()
     else:
         # 任务已结束但没有错误，可能是正常完成
