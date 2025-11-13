@@ -12,145 +12,192 @@ from .base_node import StateMutationNode
 from ..llms.base import LLMClient
 from ..state.state import ReportState
 from ..prompts import SYSTEM_PROMPT_HTML_GENERATION
+
 # 不再需要text_processing依赖
 
 
 class HTMLGenerationNode(StateMutationNode):
     """HTML生成处理节点"""
-    
+
     def __init__(self, llm_client: LLMClient):
         """
         初始化HTML生成节点
-        
+
         Args:
             llm_client: LLM客户端
         """
         super().__init__(llm_client, "HTMLGenerationNode")
-    
+
     def run(self, input_data: Dict[str, Any], **kwargs) -> str:
         """
         执行HTML生成
-        
+
         Args:
             input_data: 包含报告数据的字典
                 - query: 原始查询
                 - query_engine_report: QueryEngine报告内容
-                - media_engine_report: MediaEngine报告内容  
+                - media_engine_report: MediaEngine报告内容
                 - insight_engine_report: InsightEngine报告内容
                 - forum_logs: 论坛日志内容
                 - selected_template: 选择的模板内容
-                
+
         Returns:
             生成的HTML内容
         """
         logger.info("开始生成HTML报告...")
-        
+
         try:
             # 准备LLM输入数据
-            llm_input = {
-                "query": input_data.get('query', ''),
-                "query_engine_report": input_data.get('query_engine_report', ''),
-                "media_engine_report": input_data.get('media_engine_report', ''),
-                "insight_engine_report": input_data.get('insight_engine_report', ''),
-                "forum_logs": input_data.get('forum_logs', ''),
-                "selected_template": input_data.get('selected_template', '')
-            }
+            query_report = input_data.get('query_engine_report', '')
+            media_report = input_data.get('media_engine_report', '')
+            insight_report = input_data.get('insight_engine_report', '')
+            forum_logs = input_data.get('forum_logs', '')
             
+            # 记录原始数据大小
+            original_total = len(query_report) + len(media_report) + len(insight_report) + len(forum_logs)
+            logger.info(f"原始输入数据 - query: {len(query_report)}, media: {len(media_report)}, "
+                       f"insight: {len(insight_report)}, forum: {len(forum_logs)}, "
+                       f"总计: {original_total} 字符")
+            
+            # 智能压缩：如果输入数据过大，进行压缩
+            # 目标：保持在 9000 tokens 以内（约 13500 字符）
+            max_total_chars = 13000
+            
+            # 优先级：QueryEngine > MediaEngine > InsightEngine > ForumLogs
+            # 为每个部分分配字符配额
+            query_quota = min(len(query_report), 4000)
+            media_quota = min(len(media_report), 4000)
+            insight_quota = min(len(insight_report), 3000)
+            forum_quota = min(len(forum_logs), 2000)
+            
+            # 如果总长度超过限制，进行截断
+            if original_total > max_total_chars:
+                logger.warning(f"⚠️ 输入数据过大（{original_total} 字符），进行智能压缩...")
+                query_report = query_report[:query_quota]
+                media_report = media_report[:media_quota]
+                insight_report = insight_report[:insight_quota]
+                forum_logs = forum_logs[:forum_quota]
+                compressed_total = len(query_report) + len(media_report) + len(insight_report) + len(forum_logs)
+                logger.info(f"✓ 压缩完成 - query: {len(query_report)}, media: {len(media_report)}, "
+                           f"insight: {len(insight_report)}, forum: {len(forum_logs)}, "
+                           f"总计: {compressed_total} 字符（压缩率: {compressed_total/original_total*100:.1f}%）")
+            
+            llm_input = {
+                "query": input_data.get("query", ""),
+                "query_engine_report": query_report,
+                "media_engine_report": media_report,
+                "insight_engine_report": insight_report,
+                "forum_logs": forum_logs,
+                "selected_template": input_data.get("selected_template", ""),
+            }
+
             # 转换为JSON格式传递给LLM
             message = json.dumps(llm_input, ensure_ascii=False, indent=2)
-            
-            # 调用LLM生成HTML
-            response = self.llm_client.invoke(SYSTEM_PROMPT_HTML_GENERATION, message)
-            
+
+            # 记录最终输入数据大小（包含 JSON 格式开销）
+            total_chars = len(message)
+            estimated_tokens = total_chars // 1.5  # 粗略估算：1.5字符 ≈ 1 token
+            logger.info(f"最终输入数据（含JSON格式）: {total_chars} 字符 (约 {int(estimated_tokens)} tokens)")
+
+            # 调用LLM生成HTML（设置大的 max_tokens 以支持长报告）
+            # qwen-long 支持 32768 tokens 输出，充分利用其能力生成详细报告
+            response = self.llm_client.invoke(
+                SYSTEM_PROMPT_HTML_GENERATION,
+                message,
+                max_tokens=24000,  # qwen-long 的大输出，约 16800-19200 字中文
+            )
+
             # 处理响应（简化版）
             processed_response = self.process_output(response)
-            
+
             logger.info("HTML报告生成完成")
             return processed_response
-            
+
         except Exception as e:
             logger.exception(f"HTML生成失败: {str(e)}")
             # 返回备用HTML
             return self._generate_fallback_html(input_data)
-    
-    def mutate_state(self, input_data: Dict[str, Any], state: ReportState, **kwargs) -> ReportState:
+
+    def mutate_state(
+        self, input_data: Dict[str, Any], state: ReportState, **kwargs
+    ) -> ReportState:
         """
         修改报告状态，添加生成的HTML内容
-        
+
         Args:
             input_data: 输入数据
             state: 当前报告状态
             **kwargs: 额外参数
-            
+
         Returns:
             更新后的报告状态
         """
         # 生成HTML
         html_content = self.run(input_data, **kwargs)
-        
+
         # 更新状态
         state.html_content = html_content
         state.mark_completed()
-        
+
         return state
-    
+
     def process_output(self, output: str) -> str:
         """
         处理LLM输出，提取HTML内容
-        
+
         Args:
             output: LLM原始输出
-            
+
         Returns:
             HTML内容
         """
         try:
             logger.info(f"处理LLM原始输出，长度: {len(output)} 字符")
-            
+
             html_content = output.strip()
-            
+
             # 清理markdown代码块标记（如果存在）
-            if html_content.startswith('```html'):
+            if html_content.startswith("```html"):
                 html_content = html_content[7:]  # 移除 '```html'
-                if html_content.endswith('```'):
+                if html_content.endswith("```"):
                     html_content = html_content[:-3]  # 移除结尾的 '```'
-            elif html_content.startswith('```') and html_content.endswith('```'):
+            elif html_content.startswith("```") and html_content.endswith("```"):
                 html_content = html_content[3:-3]  # 移除前后的 '```'
-            
+
             html_content = html_content.strip()
-            
+
             # 如果内容为空，返回原始输出
             if not html_content:
                 logger.info("处理后内容为空，返回原始输出")
                 html_content = output
-            
+
             logger.info(f"HTML处理完成，最终长度: {len(html_content)} 字符")
             return html_content
-            
+
         except Exception as e:
             logger.exception(f"处理HTML输出失败: {str(e)}，返回原始输出")
             return output
-    
+
     def _generate_fallback_html(self, input_data: Dict[str, Any]) -> str:
         """
         生成备用HTML报告（当LLM失败时使用）
-        
+
         Args:
             input_data: 输入数据
-            
+
         Returns:
             备用HTML内容
         """
         logger.info("使用备用HTML生成方法")
-        
-        query = input_data.get('query', '智能舆情分析报告')
-        query_report = input_data.get('query_engine_report', '')
-        media_report = input_data.get('media_engine_report', '')
-        insight_report = input_data.get('insight_engine_report', '')
-        forum_logs = input_data.get('forum_logs', '')
-        
+
+        query = input_data.get("query", "智能舆情分析报告")
+        query_report = input_data.get("query_engine_report", "")
+        media_report = input_data.get("media_engine_report", "")
+        insight_report = input_data.get("insight_engine_report", "")
+        forum_logs = input_data.get("forum_logs", "")
+
         generation_time = datetime.now().strftime("%Y年%m月%d日 %H:%M:%S")
-        
+
         html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -248,7 +295,5 @@ class HTMLGenerationNode(StateMutationNode):
     </div>
 </body>
 </html>"""
-        
-        return html_content
-    
 
+        return html_content

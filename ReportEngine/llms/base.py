@@ -7,6 +7,7 @@ import sys
 from typing import Any, Dict, Optional
 
 from openai import OpenAI
+from loguru import logger
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
@@ -59,8 +60,16 @@ class LLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-        allowed_keys = {"temperature", "top_p", "presence_penalty", "frequency_penalty", "stream"}
+        allowed_keys = {"temperature", "top_p", "presence_penalty", "frequency_penalty", "stream", "max_tokens"}
         extra_params = {key: value for key, value in kwargs.items() if key in allowed_keys and value is not None}
+        
+        # 如果没有指定 max_tokens，为 qwen-long 设置合理的默认值
+        if "max_tokens" not in extra_params:
+            # qwen-long 支持 32768 tokens 输出，设置为 16000 以生成长报告（约 11200-12800 字）
+            extra_params["max_tokens"] = 16000
+        
+        # 记录实际使用的 max_tokens
+        logger.info(f"LLM调用参数 - max_tokens: {extra_params.get('max_tokens')}, model: {self.model_name}")
 
         timeout = kwargs.pop("timeout", self.timeout)
 
@@ -72,7 +81,9 @@ class LLMClient:
         )
 
         if response.choices and response.choices[0].message:
-            return self.validate_response(response.choices[0].message.content)
+            content = self.validate_response(response.choices[0].message.content)
+            logger.info(f"LLM响应长度: {len(content)} 字符, finish_reason: {response.choices[0].finish_reason}")
+            return content
         return ""
 
     @staticmethod
