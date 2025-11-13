@@ -1074,7 +1074,7 @@
                     </button>
                     <button class="app-button" data-app="forum">
                         <span class="status-indicator running" id="status-forum"></span>
-                        Forum Engine
+                        Host Engine
                     </button>
                     <button class="app-button locked" data-app="report" title="需等待其余三个Agent工作完毕">
                         <span class="status-indicator" id="status-report"></span>
@@ -1237,7 +1237,7 @@
             insight: 'Insight Agent - 私有数据库挖掘',
             media: 'Media Agent - 多模态内容分析', 
             query: 'Query Agent - 精准信息搜索',
-            forum: 'Forum Engine - 多智能体交流',
+            forum: 'Host Engine - 多智能体交流',
             report: 'Report Agent - 最终报告生成'
         };
 
@@ -1895,7 +1895,7 @@
             // 根据应用类型处理不同的显示逻辑
             if (app === 'forum') {
                 // 切换到论坛模式
-                document.getElementById('embeddedHeader').textContent = 'Forum Engine - 多智能体交流';
+                document.getElementById('embeddedHeader').textContent = 'Host Engine - 多智能体交流';
                 
                 // 显示论坛容器，隐藏其他内容
                 document.getElementById('forumContainer').classList.add('active');
@@ -2084,7 +2084,7 @@
             
             // 如果是Forum Engine，直接显示论坛界面
             if (app === 'forum') {
-                header.textContent = 'Forum Engine - 多智能体交流';
+                header.textContent = 'Host Engine - 多智能体交流';
                 
                 // 隐藏所有iframe
                 if (typeof preloadedIframes !== 'undefined') {
@@ -2358,7 +2358,7 @@
                     chatArea.innerHTML += `
                         <div class="forum-message system">
                             <div class="forum-message-header">SYSTEM</div>
-                            <div class="forum-message-content">ForumEngine 论坛已启动，ID：98fiaw4324dwadhsl21awhs908147</div>
+                            <div class="forum-message-content">Host Engine 论坛已启动，ID：98fiaw4324dwadhsl21awhs908147</div>
                             <div class="forum-timestamp">${new Date().toLocaleTimeString('zh-CN')}</div>
                         </div>
                     `;
