@@ -103,13 +103,6 @@ def main():
         st.write("")  # 添加一些垂直空间
         st.write("")  # 对齐按钮位置
         
-        # 调试日志：显示当前状态
-        logger.info(f"[按钮状态检查] is_running={st.session_state.is_running}, "
-                   f"task_result={st.session_state.task_result is not None}, "
-                   f"task_error={st.session_state.task_error is not None}")
-        if st.session_state.task_error:
-            logger.info(f"[按钮状态检查] task_error内容: {st.session_state.task_error[:100] if len(str(st.session_state.task_error)) > 100 else st.session_state.task_error}")
-        
         if st.session_state.is_running:
             if st.button("⏹️ 停止", type="secondary", use_container_width=True, key="stop_button"):
                 logger.info("=" * 50)
@@ -312,18 +305,17 @@ def start_research_thread(query: str, config: Settings):
 
 def monitor_research_progress():
     """监控研究进度（在 main 函数中每次都调用）"""
-    logger.info(f"[监控] is_running={st.session_state.is_running}")
-    
     if not st.session_state.is_running:
-        logger.info("[监控] 任务未运行，跳过监控")
         return
     
     if 'result_container' not in st.session_state:
-        logger.info("[监控] result_container 不存在，跳过监控")
         return
     
     result_container = st.session_state.result_container
-    logger.info(f"[监控] result_container['is_running']={result_container['is_running']}")
+    
+    # 添加一个明显的分隔线和标题
+    st.markdown("---")
+    st.subheader("📊 研究进度")
     
     # 创建进度条和状态显示
     progress_bar = st.progress(0)
@@ -345,7 +337,6 @@ def monitor_research_progress():
             logger.error(f"错误详情:\n{result_container['task_error']}")
         st.session_state.is_running = False
         # 刷新页面以显示重新运行按钮
-        logger.info("[监控] 检测到错误，准备刷新页面...")
         time.sleep(0.5)
         st.rerun()
         return
@@ -376,20 +367,15 @@ def monitor_research_progress():
                 return
         
         # 继续刷新以更新进度
-        logger.info("[监控] 准备刷新页面以更新进度...")
         time.sleep(0.5)
         st.rerun()
     else:
         # 任务已结束但没有错误，可能是正常完成
-        logger.info("[监控] 任务已结束（is_running=False），停止监控")
-        logger.info(f"[监控] task_error={result_container.get('task_error')}")
-        logger.info(f"[监控] task_result={result_container.get('task_result')}")
         st.session_state.is_running = False
         
         # 如果有 task_error，同步到 session_state
         if result_container.get('task_error'):
             st.session_state.task_error = result_container['task_error']
-            logger.info("[监控] 检测到 task_error，准备刷新页面...")
             time.sleep(0.5)
             st.rerun()
 

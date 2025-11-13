@@ -104,11 +104,9 @@ def main():
         st.write("")  # 对齐按钮位置
         if st.session_state.is_running:
             if st.button("⏹️ 停止", type="secondary", use_container_width=True, key="stop_button"):
-                logger.info("=" * 50)
                 logger.info("用户点击了停止按钮")
                 st.session_state.stop_event.set()
                 logger.info(f"停止事件已设置: {st.session_state.stop_event.is_set()}")
-                logger.info("=" * 50)
                 st.warning("⏹️ 正在停止任务，请稍候...")
         elif st.session_state.task_result or st.session_state.task_error:
             # 任务已完成或出错，显示重新运行按钮
@@ -290,14 +288,10 @@ def start_research_thread(query: str, config: Settings):
 
 def monitor_research_progress():
     """监控研究进度（每次 st.rerun() 后都会执行）"""
-    logger.info("[监控] monitor_research_progress() 被调用")
     if 'result_container' not in st.session_state:
-        logger.info("[监控] result_container 不存在，退出监控")
         return
     
     result_container = st.session_state.result_container
-    logger.info(f"[监控] is_running={st.session_state.is_running}")
-    logger.info(f"[监控] result_container['is_running']={result_container.get('is_running')}")
     
     # 添加一个明显的分隔线和标题
     st.markdown("---")
