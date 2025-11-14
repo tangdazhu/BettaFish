@@ -1062,7 +1062,7 @@
             <div class="search-title">智舆 - 智能简洁通用的舆情分析平台</div>
             <div class="search-row">
                 <button class="config-button" id="openConfigButton">LLM 配置</button>
-                <button class="config-button" id="openEngineConfigButton" style="background-color: #4169E1; color: #ffffff;">Engine配置</button>
+                <button class="config-button" id="openEngineConfigButton">Engine配置</button>
                 <div class="search-box">
                     <input type="text" class="search-input" id="searchInput" placeholder="请输入要分析的内容...">
                     <button class="search-button" id="searchButton">开始</button>
@@ -2578,7 +2578,18 @@
                 if (data.success && data.engines_ready) {
                     // 文件准备就绪，解锁按钮
                     reportButton.classList.remove('locked');
-                    reportButton.title = 'Report Engine - 智能报告生成\n所有引擎都有新文件，可以生成报告';
+                    
+                    // 构建提示信息，显示启用的引擎
+                    let titleInfo = 'Report Engine - 智能报告生成\n';
+                    if (data.enabled_engines) {
+                        const enabledList = Object.entries(data.enabled_engines)
+                            .filter(([_, enabled]) => enabled)
+                            .map(([engine, _]) => engine)
+                            .join(', ');
+                        titleInfo += `启用的引擎: ${enabledList}\n`;
+                    }
+                    titleInfo += '所有启用的引擎都有新文件，可以生成报告';
+                    reportButton.title = titleInfo;
                     
                     // 检查是否已经有报告在显示
                     const reportPreview = document.getElementById('reportPreview');
@@ -2587,7 +2598,7 @@
                     // 如果当前在report页面且还没有触发自动生成且没有正在进行的任务且没有已显示的报告，则自动生成报告
                     if (currentApp === 'report' && !autoGenerateTriggered && !reportTaskId && !hasReport) {
                         autoGenerateTriggered = true;
-                        console.log('检测到锁消失且无现有报告，自动开始生成报告');
+                        console.log('检测到启用的引擎都已完成且无现有报告，自动开始生成报告');
                         setTimeout(() => {
                             generateReport();
                         }, 1000); // 延迟1秒开始生成
@@ -2597,12 +2608,21 @@
                     reportButton.classList.add('locked');
                     
                     // 构建详细的提示信息
-                    let titleInfo = '\n';
+                    let titleInfo = 'Report Engine - 智能报告生成\n';
+                    
+                    // 显示启用的引擎
+                    if (data.enabled_engines) {
+                        const enabledList = Object.entries(data.enabled_engines)
+                            .filter(([_, enabled]) => enabled)
+                            .map(([engine, _]) => engine)
+                            .join(', ');
+                        titleInfo += `启用的引擎: ${enabledList}\n\n`;
+                    }
                     
                     if (data.missing_files && data.missing_files.length > 0) {
                         titleInfo += '等待新文件:\n' + data.missing_files.join('\n');
                     } else {
-                        titleInfo += '等待三个Agent工作完毕';
+                        titleInfo += '等待启用的引擎工作完毕';
                     }
                     
                     reportButton.title = titleInfo;
