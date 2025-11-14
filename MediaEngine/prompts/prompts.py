@@ -12,20 +12,14 @@ output_schema_report_structure = {
     "type": "array",
     "items": {
         "type": "object",
-        "properties": {
-            "title": {"type": "string"},
-            "content": {"type": "string"}
-        }
-    }
+        "properties": {"title": {"type": "string"}, "content": {"type": "string"}},
+    },
 }
 
 # 首次搜索输入Schema
 input_schema_first_search = {
     "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "content": {"type": "string"}
-    }
+    "properties": {"title": {"type": "string"}, "content": {"type": "string"}},
 }
 
 # 首次搜索输出Schema
@@ -34,9 +28,9 @@ output_schema_first_search = {
     "properties": {
         "search_query": {"type": "string"},
         "search_tool": {"type": "string"},
-        "reasoning": {"type": "string"}
+        "reasoning": {"type": "string"},
     },
-    "required": ["search_query", "search_tool", "reasoning"]
+    "required": ["search_query", "search_tool", "reasoning"],
 }
 
 # 首次总结输入Schema
@@ -46,19 +40,14 @@ input_schema_first_summary = {
         "title": {"type": "string"},
         "content": {"type": "string"},
         "search_query": {"type": "string"},
-        "search_results": {
-            "type": "array",
-            "items": {"type": "string"}
-        }
-    }
+        "search_results": {"type": "array", "items": {"type": "string"}},
+    },
 }
 
 # 首次总结输出Schema
 output_schema_first_summary = {
     "type": "object",
-    "properties": {
-        "paragraph_latest_state": {"type": "string"}
-    }
+    "properties": {"paragraph_latest_state": {"type": "string"}},
 }
 
 # 反思输入Schema
@@ -67,8 +56,8 @@ input_schema_reflection = {
     "properties": {
         "title": {"type": "string"},
         "content": {"type": "string"},
-        "paragraph_latest_state": {"type": "string"}
-    }
+        "paragraph_latest_state": {"type": "string"},
+    },
 }
 
 # 反思输出Schema
@@ -77,9 +66,9 @@ output_schema_reflection = {
     "properties": {
         "search_query": {"type": "string"},
         "search_tool": {"type": "string"},
-        "reasoning": {"type": "string"}
+        "reasoning": {"type": "string"},
     },
-    "required": ["search_query", "search_tool", "reasoning"]
+    "required": ["search_query", "search_tool", "reasoning"],
 }
 
 # 反思总结输入Schema
@@ -89,20 +78,15 @@ input_schema_reflection_summary = {
         "title": {"type": "string"},
         "content": {"type": "string"},
         "search_query": {"type": "string"},
-        "search_results": {
-            "type": "array",
-            "items": {"type": "string"}
-        },
-        "paragraph_latest_state": {"type": "string"}
-    }
+        "search_results": {"type": "array", "items": {"type": "string"}},
+        "paragraph_latest_state": {"type": "string"},
+    },
 }
 
 # 反思总结输出Schema
 output_schema_reflection_summary = {
     "type": "object",
-    "properties": {
-        "updated_paragraph_latest_state": {"type": "string"}
-    }
+    "properties": {"updated_paragraph_latest_state": {"type": "string"}},
 }
 
 # 报告格式化输入Schema
@@ -112,9 +96,9 @@ input_schema_report_formatting = {
         "type": "object",
         "properties": {
             "title": {"type": "string"},
-            "paragraph_latest_state": {"type": "string"}
-        }
-    }
+            "paragraph_latest_state": {"type": "string"},
+        },
+    },
 }
 
 # ===== 系统提示词定义 =====
@@ -328,6 +312,12 @@ SYSTEM_PROMPT_REPORT_FORMATTING = f"""
 </INPUT JSON SCHEMA>
 
 **你的核心使命：创建一份立体化、多维度的全景式多媒体分析报告，不少于一万字**
+
+**⚠️ 严格要求：**
+1. **禁止生成流程图、思维导图或抽象总结**：不要用箭头、符号等简化表达，必须用完整的段落和详细的分析文字
+2. **禁止省略内容**：每个段落都必须完整展开，不能用"..."或"[省略]"等占位符
+3. **必须达到一万字以上**：这是硬性要求，不是建议。如果内容不足，继续扩展分析深度和广度
+4. **必须使用提供的所有数据**：JSON中每个段落的`paragraph_latest_state`都包含详细的分析内容，你必须将这些内容完整地整合到最终报告中
 
 **多媒体分析报告的创新架构：**
 

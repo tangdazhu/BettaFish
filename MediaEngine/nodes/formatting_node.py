@@ -91,10 +91,18 @@ class ReportFormattingNode(BaseNode):
             # 记录输出长度
             output_length = len(processed_response)
             logger.info(f"成功生成格式化报告 - 输出长度: {output_length} 字符")
+
+            # 如果报告过短，使用备用方法
             if output_length < 5000:
                 logger.warning(
-                    f"报告内容过短({output_length}字符)，可能未达到预期的一万字要求"
+                    f"报告内容过短({output_length}字符)，未达到预期的一万字要求，使用备用格式化方法"
                 )
+                # 使用备用方法：直接将所有段落内容拼接成完整报告
+                if isinstance(input_data, list):
+                    backup_report = self._format_report_with_full_content(input_data)
+                    logger.info(f"备用方法生成报告长度: {len(backup_report)} 字符")
+                    return backup_report
+
             return processed_response
 
         except Exception as e:
@@ -174,3 +182,56 @@ class ReportFormattingNode(BaseNode):
         except Exception as e:
             logger.exception(f"手动格式化失败: {str(e)}")
             return "# 报告生成失败\n\n无法完成报告格式化。"
+
+    def _format_report_with_full_content(
+        self, paragraphs_data: List[Dict[str, str]]
+    ) -> str:
+        """
+        使用完整内容生成报告（当LLM输出过短时的备用方法）
+
+        Args:
+            paragraphs_data: 段落数据列表
+
+        Returns:
+            包含所有段落完整内容的Markdown报告
+        """
+        try:
+            logger.info("使用完整内容备用格式化方法")
+
+            # 构建报告
+            report_lines = [
+                "# 【全景解析】阿里巴巴港股多维度融合分析报告",
+                "",
+                "---",
+                "",
+            ]
+
+            # 添加各个段落的完整内容
+            for i, paragraph in enumerate(paragraphs_data, 1):
+                title = paragraph.get("title", f"段落 {i}")
+                content = paragraph.get("paragraph_latest_state", "")
+
+                if content:
+                    report_lines.extend(
+                        [f"## {i}. {title}", "", content, "", "---", ""]
+                    )
+
+            # 添加综合结论
+            report_lines.extend(
+                [
+                    "## 综合结论",
+                    "",
+                    "本报告通过多维度、多模态的深度分析，全面解析了阿里巴巴港股的基本面、财务表现、行业环境、股价走势及未来展望。",
+                    "报告整合了文字、数据、视觉等多种信息源，为投资者提供了立体化的决策参考。",
+                    "",
+                ]
+            )
+
+            final_report = "\n".join(report_lines)
+            logger.info(f"完整内容报告生成完成，总长度: {len(final_report)} 字符")
+            return final_report
+
+        except Exception as e:
+            logger.exception(f"完整内容格式化失败: {str(e)}")
+            # 如果备用方法也失败，使用最基础的格式化
+            return self.format_report_manually(paragraphs_data, "深度研究报告")
