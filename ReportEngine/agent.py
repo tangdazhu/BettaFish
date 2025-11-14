@@ -433,14 +433,22 @@ class ReportAgent:
             "latest_files": {},
         }
 
+        # 获取最新文件路径（用于显示文件名）
+        latest_files_preview = self.file_baseline.get_latest_files(directories)
+
         # 构建详细信息
         for engine, new_count in check_result["new_files_found"].items():
             current_count = check_result["current_counts"][engine]
             baseline_count = check_result["baseline_counts"].get(engine, 0)
 
+            # 获取最新文件名
+            latest_file_name = ""
+            if engine in latest_files_preview:
+                latest_file_name = os.path.basename(latest_files_preview[engine])
+
             if new_count > 0:
                 result["files_found"].append(
-                    f"{engine}: {current_count}个文件 (新增{new_count}个)"
+                    f"{engine}: 目录有{current_count}个文件 (新增{new_count}个)，将使用最新文件: {latest_file_name}"
                 )
             else:
                 result["missing_files"].append(
@@ -496,14 +504,22 @@ class ReportAgent:
             "enabled_engines": enabled_engines,
         }
 
+        # 获取最新文件路径（用于显示文件名）
+        latest_files_preview = self.file_baseline.get_latest_files(enabled_directories)
+
         # 构建详细信息（只显示启用的引擎）
         for engine, new_count in check_result["new_files_found"].items():
             current_count = check_result["current_counts"][engine]
             baseline_count = check_result["baseline_counts"].get(engine, 0)
 
+            # 获取最新文件名
+            latest_file_name = ""
+            if engine in latest_files_preview:
+                latest_file_name = os.path.basename(latest_files_preview[engine])
+
             if new_count > 0:
                 result["files_found"].append(
-                    f"{engine}: {current_count}个文件 (新增{new_count}个)"
+                    f"{engine}: 目录有{current_count}个文件 (新增{new_count}个)，将使用最新文件: {latest_file_name}"
                 )
             else:
                 result["missing_files"].append(
