@@ -684,6 +684,50 @@
             to { transform: rotate(360deg); }
         }
 
+        /* Engine配置复选框样式 */
+        .engine-checkbox-item {
+            display: flex;
+            align-items: flex-start;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 2px solid #000000;
+            background-color: #ffffff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .engine-checkbox-item:hover {
+            background-color: #f5f5f5;
+        }
+
+        .engine-checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .engine-checkbox-content {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .engine-checkbox-label {
+            font-size: 15px;
+            font-weight: bold;
+            color: #000000;
+        }
+
+        .engine-checkbox-description {
+            font-size: 12px;
+            color: #666666;
+            line-height: 1.4;
+        }
+
         /* 响应式设计 */
         @media (max-width: 768px) {
             .main-content {
@@ -1018,6 +1062,7 @@
             <div class="search-title">智舆 - 智能简洁通用的舆情分析平台</div>
             <div class="search-row">
                 <button class="config-button" id="openConfigButton">LLM 配置</button>
+                <button class="config-button" id="openEngineConfigButton" style="background-color: #4169E1; color: #ffffff;">Engine配置</button>
                 <div class="search-box">
                     <input type="text" class="search-input" id="searchInput" placeholder="请输入要分析的内容...">
                     <button class="search-button" id="searchButton">开始</button>
@@ -1118,6 +1163,54 @@
         </div>
     </div>
 
+    <!-- Engine配置弹窗 -->
+    <div class="config-modal-overlay" id="engineConfigModal">
+        <div class="config-modal">
+            <div class="config-modal-header">
+                <div class="config-modal-title">Engine 配置</div>
+                <div class="config-modal-actions">
+                    <button class="config-close-button" id="closeEngineConfigModal" aria-label="关闭配置窗口">×</button>
+                </div>
+            </div>
+            <div class="config-modal-body" id="engineConfigFormContainer">
+                <section class="config-group">
+                    <div class="config-group-title">选择要启用的分析引擎</div>
+                    <div class="config-group-subtitle">勾选下方的引擎，点击开始后仅启动选中的引擎</div>
+                    
+                    <label class="engine-checkbox-item">
+                        <input type="checkbox" class="engine-checkbox" data-engine="insight" checked>
+                        <div class="engine-checkbox-content">
+                            <span class="engine-checkbox-label">启动Insight Engine</span>
+                            <span class="engine-checkbox-description">私有数据库挖掘 - 分析本地社交媒体数据</span>
+                        </div>
+                    </label>
+                    
+                    <label class="engine-checkbox-item">
+                        <input type="checkbox" class="engine-checkbox" data-engine="media" checked>
+                        <div class="engine-checkbox-content">
+                            <span class="engine-checkbox-label">启动Media Engine</span>
+                            <span class="engine-checkbox-description">多模态内容分析 - 全网搜索与多媒体内容理解</span>
+                        </div>
+                    </label>
+                    
+                    <label class="engine-checkbox-item">
+                        <input type="checkbox" class="engine-checkbox" data-engine="query" checked>
+                        <div class="engine-checkbox-content">
+                            <span class="engine-checkbox-label">启动Query Engine</span>
+                            <span class="engine-checkbox-description">精准信息搜索 - 全球新闻源检索与信息汇总</span>
+                        </div>
+                    </label>
+                </section>
+            </div>
+            <div class="config-modal-footer">
+                <div class="config-status-message" id="engineConfigStatusMessage"></div>
+                <div class="config-modal-footer-actions">
+                    <button class="config-save-button" id="saveEngineConfigButton">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 消息提示 -->
     <div class="message" id="message"></div>
 
@@ -1139,8 +1232,10 @@
         let systemStarted = false;
         let systemStarting = false;
         let configModalLocked = false;
+        let enabledEngines = { insight: true, media: true, query: true }; // Engine配置状态
 
         const CONFIG_ENDPOINT = '/api/config';
+        const ENGINE_CONFIG_ENDPOINT = '/api/engine-config';
         const SYSTEM_STATUS_ENDPOINT = '/api/system/status';
         const SYSTEM_START_ENDPOINT = '/api/system/start';
         const START_BUTTON_DEFAULT_TEXT = '保存并启动系统';
@@ -1268,6 +1363,9 @@
             // 初始化论坛相关功能
             initializeForum();
             
+            // 加载Engine配置
+            loadEngineConfigOnStartup();
+            
             // 延迟预加载iframe以确保应用启动完成
             setTimeout(() => {
                 preloadIframes();
@@ -1379,7 +1477,35 @@
                 if (event.key === 'Escape' && isConfigModalVisible()) {
                     closeConfigModal();
                 }
+                if (event.key === 'Escape' && isEngineConfigModalVisible()) {
+                    closeEngineConfigModal();
+                }
             });
+
+            // Engine 配置弹窗
+            const openEngineConfigButton = document.getElementById('openEngineConfigButton');
+            if (openEngineConfigButton) {
+                openEngineConfigButton.addEventListener('click', () => openEngineConfigModal());
+            }
+
+            const closeEngineConfigButton = document.getElementById('closeEngineConfigModal');
+            if (closeEngineConfigButton) {
+                closeEngineConfigButton.addEventListener('click', () => closeEngineConfigModal());
+            }
+
+            const saveEngineConfigButton = document.getElementById('saveEngineConfigButton');
+            if (saveEngineConfigButton) {
+                saveEngineConfigButton.addEventListener('click', () => saveEngineConfig());
+            }
+
+            const engineConfigModal = document.getElementById('engineConfigModal');
+            if (engineConfigModal) {
+                engineConfigModal.addEventListener('click', (event) => {
+                    if (event.target === engineConfigModal) {
+                        closeEngineConfigModal();
+                    }
+                });
+            }
         }
 
         function isConfigModalVisible() {
@@ -1843,12 +1969,14 @@
                 preloadIframes();
             }
             
-            // 向所有运行中的应用发送搜索请求（通过刷新iframe传递参数）
+            // 向所有运行中且启用的应用发送搜索请求（通过刷新iframe传递参数）
             let totalRunning = 0;
             const ports = { insight: 8501, media: 8502, query: 8503 };
             
             Object.keys(appStatus).forEach(app => {
-                if (appStatus[app] === 'running' && preloadedIframes[app]) {
+                // 检查应用是否运行中、是否启用以及是否有iframe
+                const isEnabled = enabledEngines[app] !== undefined ? enabledEngines[app] : true;
+                if (appStatus[app] === 'running' && preloadedIframes[app] && isEnabled) {
                     totalRunning++;
                     
                     // 构建搜索URL
@@ -1857,6 +1985,8 @@
                     
                     // 直接更新主iframe的src来传递搜索参数
                     preloadedIframes[app].src = searchUrl;
+                } else if (appStatus[app] === 'running' && !isEnabled) {
+                    console.log(`${app} 已禁用，跳过搜索请求`);
                 }
             });
             
@@ -3185,6 +3315,129 @@
                 // 更新内容和样式
                 statusContent.innerHTML = statusHTML;
                 statusContent.className = `report-status ${statusClass}`;
+            }
+        }
+
+        // Engine配置相关函数
+        function loadEngineConfigOnStartup() {
+            fetch(ENGINE_CONFIG_ENDPOINT)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        enabledEngines = data.config || { insight: true, media: true, query: true };
+                        console.log('Engine配置已加载:', enabledEngines);
+                    } else {
+                        console.warn('加载Engine配置失败，使用默认配置');
+                    }
+                })
+                .catch(error => {
+                    console.error('加载Engine配置失败:', error);
+                });
+        }
+
+        function isEngineConfigModalVisible() {
+            const modal = document.getElementById('engineConfigModal');
+            return modal ? modal.classList.contains('visible') : false;
+        }
+
+        function openEngineConfigModal() {
+            const modal = document.getElementById('engineConfigModal');
+            if (!modal) {
+                return;
+            }
+
+            modal.classList.add('visible');
+            loadEngineConfig();
+        }
+
+        function closeEngineConfigModal() {
+            const modal = document.getElementById('engineConfigModal');
+            if (modal) {
+                modal.classList.remove('visible');
+            }
+            setEngineConfigStatus('', '');
+        }
+
+        function loadEngineConfig() {
+            fetch(ENGINE_CONFIG_ENDPOINT)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        enabledEngines = data.config || { insight: true, media: true, query: true };
+                        updateEngineCheckboxes();
+                        setEngineConfigStatus('已加载当前配置');
+                    } else {
+                        setEngineConfigStatus('加载配置失败: ' + (data.message || '未知错误'), 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('加载 Engine 配置失败:', error);
+                    setEngineConfigStatus('加载配置失败: ' + error.message, 'error');
+                });
+        }
+
+        function updateEngineCheckboxes() {
+            const checkboxes = document.querySelectorAll('.engine-checkbox');
+            checkboxes.forEach(checkbox => {
+                const engine = checkbox.dataset.engine;
+                if (engine && enabledEngines.hasOwnProperty(engine)) {
+                    checkbox.checked = enabledEngines[engine];
+                }
+            });
+        }
+
+        function saveEngineConfig() {
+            const checkboxes = document.querySelectorAll('.engine-checkbox');
+            const config = {};
+            
+            checkboxes.forEach(checkbox => {
+                const engine = checkbox.dataset.engine;
+                if (engine) {
+                    config[engine] = checkbox.checked;
+                }
+            });
+
+            setEngineConfigStatus('正在保存...');
+
+            fetch(ENGINE_CONFIG_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ config: config })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    enabledEngines = config;
+                    setEngineConfigStatus('配置保存成功', 'success');
+                    showMessage('Engine配置已保存', 'success');
+                    
+                    // 2秒后自动关闭弹窗
+                    setTimeout(() => {
+                        closeEngineConfigModal();
+                    }, 2000);
+                } else {
+                    setEngineConfigStatus('保存失败: ' + (data.message || '未知错误'), 'error');
+                    showMessage('Engine配置保存失败', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('保存 Engine 配置失败:', error);
+                setEngineConfigStatus('保存失败: ' + error.message, 'error');
+                showMessage('Engine配置保存失败', 'error');
+            });
+        }
+
+        function setEngineConfigStatus(message, type = '') {
+            const status = document.getElementById('engineConfigStatusMessage');
+            if (!status) {
+                return;
+            }
+            status.textContent = message || '';
+            status.classList.remove('error', 'success');
+            if (type) {
+                status.classList.add(type);
             }
         }
     </script>
