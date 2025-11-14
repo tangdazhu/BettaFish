@@ -19,13 +19,15 @@ if utils_dir not in sys.path:
 try:
     from retry_helper import with_retry, LLM_RETRY_CONFIG, InterruptedError
 except ImportError:
+
     def with_retry(config=None, stop_event=None):
         def decorator(func):
             return func
+
         return decorator
 
     LLM_RETRY_CONFIG = None
-    
+
     class InterruptedError(Exception):
         pass
 
@@ -33,7 +35,13 @@ except ImportError:
 class LLMClient:
     """Minimal wrapper around the OpenAI-compatible chat completion API."""
 
-    def __init__(self, api_key: str, model_name: str, base_url: Optional[str] = None, stop_event: Optional[threading.Event] = None):
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str,
+        base_url: Optional[str] = None,
+        stop_event: Optional[threading.Event] = None,
+    ):
         if not api_key:
             raise ValueError("Query Engine LLM API key is required.")
         if not model_name:
@@ -44,7 +52,11 @@ class LLMClient:
         self.model_name = model_name
         self.provider = model_name
         self.stop_event = stop_event
-        timeout_fallback = os.getenv("LLM_REQUEST_TIMEOUT") or os.getenv("QUERY_ENGINE_REQUEST_TIMEOUT") or "1800"
+        timeout_fallback = (
+            os.getenv("LLM_REQUEST_TIMEOUT")
+            or os.getenv("QUERY_ENGINE_REQUEST_TIMEOUT")
+            or "1800"
+        )
         try:
             self.timeout = float(timeout_fallback)
         except ValueError:
@@ -65,11 +77,11 @@ class LLMClient:
             # 检查停止信号
             if self.stop_event and self.stop_event.is_set():
                 raise InterruptedError("用户请求停止")
-            
+
             return self._do_invoke(system_prompt, user_prompt, **kwargs)
-        
+
         return _invoke_with_retry()
-    
+
     def _do_invoke(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
         current_time = datetime.now().strftime("%Y年%m月%d日%H时%M分")
         time_prefix = f"今天的实际时间是{current_time}"
@@ -82,8 +94,23 @@ class LLMClient:
             {"role": "user", "content": user_prompt},
         ]
 
-        allowed_keys = {"temperature", "top_p", "presence_penalty", "frequency_penalty", "stream"}
-        extra_params = {key: value for key, value in kwargs.items() if key in allowed_keys and value is not None}
+        allowed_keys = {
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "stream",
+            "max_tokens",
+        }
+        extra_params = {
+            key: value
+            for key, value in kwargs.items()
+            if key in allowed_keys and value is not None
+        }
+
+        # 如果没有指定 max_tokens，设置一个合理的默认值
+        if "max_tokens" not in extra_params:
+            extra_params["max_tokens"] = 8000  # 默认值，约 5600-6400 字中文
 
         timeout = kwargs.pop("timeout", self.timeout)
 
