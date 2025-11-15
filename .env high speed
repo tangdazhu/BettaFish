@@ -25,7 +25,7 @@ DB_DIALECT=postgresql
 INSIGHT_ENGINE_API_KEY=sk-yeyN9YU0UF8oXSTlraU2poLTkXIL8tp0HQv9aXk78wFVw4Ih
 # Insight Agent LLM接口BaseUrl，可自定义厂商API
 INSIGHT_ENGINE_BASE_URL=https://api.moonshot.cn/v1
-# Insight Agent LLM模型名称，如kimi-k2-0711-preview
+# Insight Agent LLM模型名称，如kimi-k2-0711-preview（推荐）或 kimi-k2-thinking（慢但质量高）
 INSIGHT_ENGINE_MODEL_NAME=kimi-k2-0905-preview
 
 # Media Agent（推荐Gemini，推荐中转厂商 https://aihubmix.com/?aff=8Ds9）API密钥
@@ -46,8 +46,8 @@ MINDSPIDER_MODEL_NAME=qwen-plus
 QUERY_ENGINE_API_KEY=sk-4a1580ae48b74ff5a078d713c339b37f
 # Query Agent LLM接口BaseUrl
 QUERY_ENGINE_BASE_URL=https://api.deepseek.com
-# Query Agent LLM模型，如deepseek-reasoner
-QUERY_ENGINE_MODEL_NAME=deepseek-reasoner
+# Query Agent LLM模型，如deepseek-chat（推荐）或 deepseek-reasoner（慢但质量高）
+QUERY_ENGINE_MODEL_NAME=deepseek-chat
 
 # Report Agent（推荐Gemini，推荐中转厂商 https://aihubmix.com/?aff=8Ds9）API密钥
 REPORT_ENGINE_API_KEY=sk-0b8a4591eae44ca983e4b892e41fa98e

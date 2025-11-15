@@ -1217,6 +1217,320 @@ ReportEngine 提供 **6 种预设报告模板**：
 - 6.0 结论与应对建议
 ```
 
+### 模板选择机制
+
+#### 自动选择流程
+
+ReportEngine 采用智能模板选择机制，根据查询内容和分析结果自动选择最合适的模板：
+
+```
+用户输入查询
+    ↓
+是否上传自定义模板？
+    ↓ 是                    ↓ 否
+使用自定义模板      LLM智能选择预设模板
+    ↓                      ↓
+    └──────→ 生成报告 ←──────┘
+```
+
+#### 选择逻辑
+
+**位置**：`ReportEngine/agent.py` → `_select_template()` 方法
+
+**优先级**：
+1. **自定义模板**（最高优先级）
+   - 如果用户上传了自定义模板，直接使用
+   - 模板名称标记为 `"custom"`
+   
+2. **LLM智能选择**
+   - 使用 `TemplateSelectionNode` 节点
+   - LLM分析查询内容、三个引擎报告、论坛日志
+   - 从6个预设模板中选择最合适的
+   
+3. **默认模板**（兜底方案）
+   - 如果LLM选择失败，使用"社会公共热点事件分析报告模板"
+   - 确保报告生成流程不中断
+
+#### LLM选择依据
+
+**位置**：`ReportEngine/nodes/template_selection_node.py`
+
+LLM根据以下信息选择模板：
+
+| 输入信息 | 作用 |
+|---------|------|
+| **查询内容** | 理解用户的分析意图 |
+| **QueryEngine报告** | 了解新闻视角和全球趋势 |
+| **MediaEngine报告** | 了解多模态内容和全网讨论 |
+| **InsightEngine报告** | 了解社交媒体舆情和情感倾向 |
+| **论坛日志** | 了解三个引擎的讨论焦点 |
+
+**模板描述映射**：
+
+```python
+def _extract_template_description(self, template_name: str) -> str:
+    """根据模板名称生成描述"""
+    if '企业品牌' in template_name:
+        return "适用于企业品牌声誉和形象分析"
+    elif '市场竞争' in template_name:
+        return "适用于市场竞争格局和对手分析"
+    elif '日常' in template_name or '定期' in template_name:
+        return "适用于日常监测和定期汇报"
+    elif '政策' in template_name or '行业' in template_name:
+        return "适用于政策影响和行业动态分析"
+    elif '热点' in template_name or '社会' in template_name:
+        return "适用于社会热点和公共事件分析"
+    elif '突发' in template_name or '危机' in template_name:
+        return "适用于突发事件和危机公关"
+    
+    return "通用报告模板"
+```
+
+### 自定义模板功能
+
+#### 功能说明
+
+**"上传模板"** 是前端界面提供的功能，允许用户上传自己的报告结构模板，ReportEngine 会按照自定义模板格式生成最终报告。
+
+#### 支持的文件格式
+
+- `.md` (Markdown) - 推荐
+- `.txt` (纯文本)
+- 最大文件大小：**1MB**
+
+#### 前端实现
+
+**位置**：`templates/index.html`
+
+```html
+<button class="upload-button" id="uploadButton">
+    上传模板
+    <input type="file" id="templateFileInput" 
+           accept=".md,.txt" 
+           title="上传自定义报告模板(支持 .md 和 .txt 文件)">
+</button>
+```
+
+**JavaScript处理**：
+
+```javascript
+// 全局变量存储自定义模板内容
+let customTemplate = '';
+
+// 处理模板文件上传
+function handleTemplateUpload(event) {
+    const file = event.target.files[0];
+    
+    // 验证文件类型（.md 或 .txt）
+    // 验证文件大小（最大 1MB）
+    // 读取文件内容到 customTemplate 变量
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        customTemplate = e.target.result;
+        showMessage(`自定义模板已加载: ${file.name}`, 'success');
+    };
+    reader.readAsText(file);
+}
+
+// 发送请求时包含自定义模板
+const requestData = { query: query };
+if (customTemplate && customTemplate.trim()) {
+    requestData.custom_template = customTemplate;
+}
+```
+
+#### 后端处理
+
+**位置**：`ReportEngine/flask_interface.py` 和 `ReportEngine/agent.py`
+
+```python
+# Flask接口接收自定义模板
+@app.route('/api/report/generate', methods=['POST'])
+def generate_report():
+    data = request.get_json() or {}
+    query = data.get("query", "智能舆情分析报告")
+    custom_template = data.get("custom_template", "")  # 接收自定义模板
+    
+    # 传递给ReportAgent
+    task = ReportTask(query, task_id, custom_template)
+
+# ReportAgent使用自定义模板
+def _select_template(self, query, reports, forum_logs, custom_template):
+    # 优先使用自定义模板
+    if custom_template:
+        logger.info("使用用户自定义模板")
+        return {
+            "template_name": "custom",
+            "template_content": custom_template,
+            "selection_reason": "用户指定的自定义模板",
+        }
+    
+    # 否则使用LLM选择预设模板
+    # ...
+```
+
+### 使用场景
+
+#### 场景1：使用预设模板（推荐）
+
+**适用情况**：
+- 首次使用系统
+- 常规分析需求
+- 不确定使用哪种模板
+
+**操作步骤**：
+1. 输入查询内容
+2. 不上传任何模板文件
+3. 点击"开始"按钮
+4. LLM自动选择最合适的预设模板
+
+**优点**：
+- ✅ 无需准备模板文件
+- ✅ LLM智能匹配最合适的模板
+- ✅ 6种专业模板覆盖大多数场景
+
+#### 场景2：使用自定义模板
+
+**适用情况**：
+- 有特定报告格式要求
+- 企业内部标准化报告
+- 需要特殊章节结构
+
+**操作步骤**：
+1. 准备自定义模板文件（.md 或 .txt）
+2. 点击"上传模板"按钮
+3. 选择模板文件
+4. 输入查询内容
+5. 点击"开始"按钮
+
+**优点**：
+- ✅ 完全自定义报告结构
+- ✅ 符合企业内部规范
+- ✅ 可重复使用同一模板
+
+**自定义模板示例**：
+
+```markdown
+# 【公司名称】舆情分析报告
+
+## 执行摘要
+- 核心发现
+- 关键风险
+- 行动建议
+
+## 一、舆情概览
+### 1.1 数据来源
+### 1.2 时间范围
+### 1.3 关键指标
+
+## 二、详细分析
+### 2.1 新闻媒体分析（QueryEngine）
+### 2.2 全网舆情分析（MediaEngine）
+### 2.3 社交媒体分析（InsightEngine）
+
+## 三、综合评估
+### 3.1 情感倾向
+### 3.2 传播趋势
+### 3.3 影响力评估
+
+## 四、风险预警
+### 4.1 潜在风险
+### 4.2 应对建议
+
+## 五、附录
+### 5.1 数据图表
+### 5.2 关键事件时间线
+```
+
+#### 场景3：混合使用
+
+**适用情况**：
+- 大部分时候使用预设模板
+- 特殊项目使用自定义模板
+
+**操作方式**：
+- 常规分析：不上传模板，使用预设
+- 特殊项目：上传自定义模板
+
+### 模板设计建议
+
+#### 1. 结构清晰
+
+```markdown
+# 一级标题：报告名称
+## 二级标题：主要章节
+### 三级标题：子章节
+```
+
+#### 2. 包含关键章节
+
+推荐包含以下章节：
+- **摘要**：核心发现和建议
+- **数据来源**：说明分析的数据范围
+- **详细分析**：分引擎展示分析结果
+- **综合评估**：整合三个引擎的观点
+- **结论建议**：行动建议和风险预警
+
+#### 3. 使用占位符
+
+在模板中使用占位符，LLM会自动填充：
+
+```markdown
+## 一、舆情概览
+### 1.1 数据来源
+- QueryEngine：[全球新闻分析]
+- MediaEngine：[全网搜索分析]
+- InsightEngine：[社交媒体分析]
+
+### 1.2 关键发现
+[LLM会在这里填充核心发现]
+```
+
+#### 4. 保持简洁
+
+- 模板只定义结构，不要包含具体内容
+- 避免过于复杂的嵌套层级
+- 使用简洁的章节标题
+
+### 模板文件位置
+
+**预设模板目录**：
+```
+ReportEngine/report_template/
+├── 企业品牌声誉分析报告模板.md
+├── 市场竞争格局舆情分析报告模板.md
+├── 日常或定期舆情监测报告模板.md
+├── 特定政策或行业动态舆情分析报告.md
+├── 社会公共热点事件分析报告模板.md
+└── 突发事件与危机公关舆情报告模板.md
+```
+
+**自定义模板**：
+- 用户上传的模板不会保存到服务器
+- 仅在当前会话中有效
+- 刷新页面后需要重新上传
+
+### 模板选择日志
+
+ReportEngine 会记录模板选择的详细日志：
+
+```
+[INFO] 选择报告模板...
+[INFO] 使用用户自定义模板
+[INFO] 选择模板: custom
+[INFO] 选择理由: 用户指定的自定义模板
+```
+
+或
+
+```
+[INFO] 选择报告模板...
+[INFO] 尝试使用LLM进行模板选择...
+[INFO] LLM选择模板: 社会公共热点事件分析报告模板
+[INFO] 选择理由: 查询内容涉及社会热点事件，适合使用该模板
+```
+
 ---
 
 **下一篇：[ReportEngine智能压缩机制](./ReportEngine智能压缩机制.md)**
