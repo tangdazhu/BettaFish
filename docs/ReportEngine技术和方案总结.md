@@ -1217,6 +1217,222 @@ ReportEngine 提供 **6 种预设报告模板**：
 - 6.0 结论与应对建议
 ```
 
+### 模板的本质：提示词指导而非 HTML 模板
+
+#### 核心概念
+
+**重要说明**：ReportEngine 的模板**不是传统的 HTML 模板**，而是 **Markdown 格式的"结构指南"**，用于指导 LLM 生成报告内容。
+
+| 特性 | 传统 HTML 模板 | ReportEngine 的 Markdown 模板 |
+|------|---------------|---------------------------|
+| **格式** | HTML + 变量占位符（如 `{{title}}`） | Markdown 章节结构 |
+| **内容填充** | 字符串替换 | LLM 生成 |
+| **样式** | 固定的 CSS | LLM 动态生成 |
+| **灵活性** | 低（需修改模板文件） | 高（LLM 自由发挥） |
+| **维护成本** | 高（HTML + CSS） | 低（只维护结构） |
+| **数据可视化** | 需预定义图表位置 | LLM 动态生成 Chart.js 代码 |
+
+#### 工作流程详解
+
+**Step 1: 读取模板文件**
+
+```python
+# ReportEngine/nodes/template_selection_node.py
+def _get_available_templates(self) -> List[Dict[str, Any]]:
+    """获取可用的模板列表"""
+    for filename in os.listdir(self.template_dir):
+        if filename.endswith('.md'):
+            with open(template_path, 'r', encoding='utf-8') as f:
+                content = f.read()  # 读取 Markdown 文本
+            
+            templates.append({
+                'name': template_name,
+                'content': content,  # 模板内容（纯文本）
+                'description': description
+            })
+```
+
+**关键点**：
+- 读取 `.md` 文件的**纯文本内容**
+- 这个内容是报告的**章节结构**，不是 HTML 代码
+
+**Step 2: LLM 选择最合适的模板**
+
+```python
+# 构建用户消息
+user_message = f"""查询内容: {query}
+可用模板:
+- 企业品牌声誉分析报告模板: 适用于品牌形象分析
+- 市场竞争格局舆情分析报告模板: 适用于竞争对手分析
+...
+
+请根据查询内容选择最合适的模板。"""
+
+# 调用 LLM 选择
+response = self.llm_client.invoke(SYSTEM_PROMPT_TEMPLATE_SELECTION, user_message)
+```
+
+**LLM 的任务**：分析查询主题，从 6 个模板中选择最合适的一个。
+
+**Step 3: 将模板内容作为提示词传递给 LLM**
+
+```python
+# ReportEngine/nodes/html_generation_node.py
+llm_input = {
+    "query": "小米1810 vs 阿里9988 投资价值",
+    "query_engine_report": "根据全球新闻分析...",
+    "media_engine_report": "根据全网搜索...",
+    "insight_engine_report": "根据社交媒体舆情...",
+    "forum_logs": "=== ForumEngine 论坛开始 ===...",
+    "selected_template": "### **日常/定期舆情监测报告**模板\n\n- **1.0 本周/月舆情概览**\n..."
+}
+
+# 转换为 JSON 格式传递给 LLM
+message = json.dumps(llm_input, ensure_ascii=False, indent=2)
+
+# 调用 LLM 生成 HTML
+response = self.llm_client.invoke(
+    SYSTEM_PROMPT_HTML_GENERATION,
+    message,
+    max_tokens=24000
+)
+```
+
+**关键点**：
+- `selected_template` 字段包含的是**模板的 Markdown 文本**
+- 这个文本作为 JSON 的一部分发送给 LLM
+- LLM 读取这个"结构指南"，按照它来组织报告
+
+**Step 4: LLM 根据模板生成完整 HTML**
+
+系统提示词告诉 LLM：
+
+```
+你是一位专业的HTML报告生成专家。
+
+你的任务：
+1. 深度整合三个引擎的分析结果
+2. 充分利用论坛日志中的讨论内容
+3. 按照选定模板的结构组织内容  ← 关键！
+4. 生成包含数据可视化的完整HTML报告
+
+HTML报告要求：
+- 包含完整的 HTML 结构（DOCTYPE、html、head、body）
+- 所有 CSS 必须内联在 <style> 标签中
+- 使用 Chart.js 生成数据可视化图表
+- 现代化的 UI 设计和响应式布局
+```
+
+**LLM 的工作**：
+1. 读取 `selected_template` 中的章节结构（如"1.0 本周/月舆情概览"）
+2. 从三个引擎报告中提取相关内容
+3. 按照模板的章节顺序组织内容
+4. 生成**完整的 HTML 代码**（包含 CSS、JavaScript、Chart.js 图表）
+
+#### 实际例子
+
+**输入给 LLM 的模板内容**：
+
+```markdown
+### **日常/定期舆情监测报告**模板
+
+- **1.0 本周/月舆情概览**
+  - 1.1 核心数据看板
+  - 1.2 本期舆情热度TOP 3
+  - 1.3 重点预警
+- **2.0 关键数据趋势**
+  - 2.1 声量走势
+  - 2.2 情感趋势
+```
+
+**LLM 生成的 HTML 输出**：
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    /* LLM 动态生成的 CSS */
+    body { font-family: 'Microsoft YaHei', Arial, sans-serif; }
+    .section { margin: 30px 0; padding: 20px; }
+    .chart-container { height: 400px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <h1>小米1810 vs 阿里9988 投资价值舆情监测报告</h1>
+  
+  <div class="section">
+    <h2>1.0 本周/月舆情概览</h2>
+    <h3>1.1 核心数据看板</h3>
+    <p>根据 InsightEngine 分析，本周小米1810相关讨论量达到 15,234 条...</p>
+    
+    <h3>1.2 本期舆情热度TOP 3</h3>
+    <ul>
+      <li>小米汽车销量突破 - 热度指数 8.7</li>
+      <li>阿里云业务增长 - 热度指数 7.3</li>
+      ...
+    </ul>
+  </div>
+  
+  <div class="section">
+    <h2>2.0 关键数据趋势</h2>
+    <h3>2.1 声量走势</h3>
+    <div class="chart-container">
+      <canvas id="volumeChart"></canvas>
+    </div>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // LLM 动态生成的 Chart.js 代码
+    new Chart(document.getElementById('volumeChart'), {
+      type: 'line',
+      data: {
+        labels: ['11-10', '11-11', '11-12', '11-13', '11-14'],
+        datasets: [{
+          label: '小米1810',
+          data: [1200, 1500, 1800, 2100, 1900],
+          borderColor: 'rgb(255, 99, 132)'
+        }]
+      }
+    });
+  </script>
+</body>
+</html>
+```
+
+#### 设计优势
+
+**1. 灵活性**
+- Markdown 模板只定义**结构**，不限制**样式**
+- LLM 可以根据内容自由设计 HTML 布局和 CSS 样式
+- 每次生成的报告可以有不同的视觉效果
+
+**2. 简洁性**
+- 不需要维护复杂的 HTML 模板文件
+- 不需要处理模板变量替换（如 `{{title}}`、`{{content}}`）
+- 模板文件只有 20-30 行，易于编辑
+
+**3. AI 原生**
+- 充分利用 LLM 的生成能力
+- LLM 可以根据内容动态调整 HTML 结构
+- 支持复杂的数据可视化（Chart.js 图表代码由 LLM 生成）
+
+**4. 内容优先**
+- 模板关注**写什么**（章节结构）
+- 而不是**怎么写**（HTML 标签）
+- LLM 负责将内容转换为美观的 HTML
+
+#### 技术实现位置
+
+| 功能 | 文件位置 | 说明 |
+|------|---------|------|
+| **模板文件** | `ReportEngine/report_template/*.md` | Markdown 格式的章节结构 |
+| **读取模板** | `nodes/template_selection_node.py` | `_get_available_templates()` |
+| **选择模板** | `nodes/template_selection_node.py` | `_llm_template_selection()` |
+| **传递模板** | `nodes/html_generation_node.py` | `llm_input['selected_template']` |
+| **生成 HTML** | `prompts/prompts.py` | `SYSTEM_PROMPT_HTML_GENERATION` |
+
 ### 模板选择机制
 
 #### 自动选择流程
