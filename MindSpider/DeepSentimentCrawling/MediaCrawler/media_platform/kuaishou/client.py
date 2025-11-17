@@ -198,9 +198,18 @@ class KuaiShouClient(AbstractApiClient):
 
         while pcursor != "no_more" and len(result) < max_count:
             comments_res = await self.get_video_comments(photo_id, pcursor)
+            utils.logger.info(
+                f"[KuaiShouClient.get_video_all_comments] photo_id:{photo_id}, comments_res keys:{comments_res.keys() if comments_res else 'None'}"
+            )
+
             vision_commen_list = comments_res.get("visionCommentList", {})
             pcursor = vision_commen_list.get("pcursor", "")
             comments = vision_commen_list.get("rootComments", [])
+
+            utils.logger.info(
+                f"[KuaiShouClient.get_video_all_comments] photo_id:{photo_id}, pcursor:{pcursor}, comments count:{len(comments)}"
+            )
+
             if len(result) + len(comments) > max_count:
                 comments = comments[: max_count - len(result)]
             if callback:  # 如果有回调函数，就执行回调函数
@@ -211,6 +220,10 @@ class KuaiShouClient(AbstractApiClient):
                 comments, photo_id, crawl_interval, callback
             )
             result.extend(sub_comments)
+
+        utils.logger.info(
+            f"[KuaiShouClient.get_video_all_comments] photo_id:{photo_id}, total comments fetched:{len(result)}"
+        )
         return result
 
     async def get_comments_all_sub_comments(

@@ -32,8 +32,9 @@ MindSpider 运行示例
 - **编程语言**: Python 3.9+
 - **AI框架**: 默认Deepseek，可以接入多种api (话题提取与分析)
 - **爬虫框架**: Playwright (浏览器自动化)
-- **数据库**: MySQL (数据持久化存储)
+- **数据库**: MySQL / PostgreSQL (数据持久化存储)
 - **并发处理**: AsyncIO (异步并发爬取)
+- **配置管理**: 统一使用 `.env` 环境变量配置
 
 ## 项目结构
 
@@ -71,6 +72,8 @@ MindSpider/
 │   ├── init_database.py         # 初始化脚本
 │   └── mindspider_tables.sql    # 表结构定义
 │
+├── add_custom_topic.py          # 自定义话题添加工具
+├── check_crawled_data.py        # 数据检查工具
 ├── config.py                    # 全局配置文件
 ├── main.py                      # 系统主入口
 ├── requirements.txt             # 依赖列表
@@ -192,7 +195,26 @@ flowchart TB
    - 管理各平台的爬取任务
    - 记录任务状态、进度、结果等
 
-5. **平台内容表**（继承自MediaCrawler）
+5.### 支持的平台
+
+| 平台 | 状态 | 说明 |
+|------|------|------|
+| **B站 (Bilibili)** | ✅ 正常 | 视频、评论，无需登录 |
+| **微博 (Weibo)** | ⚠️ 反爬虫 | HTTP 432错误，Cookie易过期，需频繁重新登录 |
+| **小红书 (XHS)** | ✅ 可用 | 笔记、评论，需要登录 |
+| **抖音 (Douyin)** | ✅ 可用 | 视频、评论，需要登录 |
+| **快手 (Kuaishou)** | ✅ 可用 | 视频、评论，需要登录 |
+| **知乎 (Zhihu)** | ✅ 可用 | 问答、评论，需要登录 |
+| **贴吧 (Tieba)** | ✅ 可用 | 帖子、评论，需要登录 |
+
+**推荐使用**：B站（最稳定，无需登录）
+
+**微博问题说明**：
+- 微博有强反爬虫机制（HTTP 432错误）
+- Cookie有效期短（1-7天），需要频繁重新登录
+- 解决方案：删除 `cookies/weibo_cookies.json` 后重新扫码登录
+- 详细文档：参见 `docs/MindSpider微博HTTP432错误解决方案.md`
+
    - xhs_note - 小红书笔记
    - douyin_aweme - 抖音视频
    - kuaishou_video - 快手视频
@@ -206,9 +228,10 @@ flowchart TB
 ### 环境要求
 
 - Python 3.9 或更高版本
-- MySQL 5.7 或更高版本
+- 数据库：MySQL 5.7+ 或 PostgreSQL 12+（二选一）
 - Conda环境：pytorch_python11（推荐）
 - 操作系统：Windows/Linux/macOS
+- 浏览器：Chrome 或 Edge（用于爬虫）
 
 ### 1. 克隆项目
 
@@ -264,22 +287,41 @@ playwright install
 
 ### 4. 配置系统
 
-复制.env.example文件为.env文件，放置在项目根目录。编辑 `.env` 文件，设置数据库和API配置：
+**重要：MindSpider使用统一的环境变量配置管理**
 
-```python
-# MySQL数据库配置
-DB_HOST = "your_database_host"
-DB_PORT = 3306
-DB_USER = "your_username"
-DB_PASSWORD = "your_password"
-DB_NAME = "mindspider"
-DB_CHARSET = "utf8mb4"
+复制 `.env.example` 文件为 `.env` 文件，放置在**项目根目录**（`d:\Python-Learning\bettafish\.env`）。
 
-# DeepSeek API密钥
-MINDSPIDER_BASE_URL=your_api_base_url
-MINDSPIDER_API_KEY=sk-your-key
+编辑 `.env` 文件，设置数据库和API配置：
+
+```bash
+# ====================== 数据库配置 ======================
+# 数据库主机地址
+DB_HOST=localhost
+# 数据库端口号（MySQL默认3306，PostgreSQL默认5432）
+DB_PORT=5432
+# 数据库用户名
+DB_USER=bettafish
+# 数据库密码
+DB_PASSWORD=bettafish_2024
+# 数据库名称
+DB_NAME=bettafish
+# 数据库字符集
+DB_CHARSET=utf8mb4
+# 数据库类型：mysql 或 postgresql
+DB_DIALECT=postgresql
+
+# ====================== AI API配置 ======================
+# MindSpider AI API（用于话题提取）
+MINDSPIDER_BASE_URL=https://api.deepseek.com/v1
+MINDSPIDER_API_KEY=sk-your-deepseek-key
 MINDSPIDER_MODEL_NAME=deepseek-chat
 ```
+
+**配置说明**：
+- 所有配置项都从 `.env` 文件读取
+- MindSpider主项目和MediaCrawler子项目共享同一配置
+- 支持MySQL和PostgreSQL两种数据库
+- 修改配置后无需修改代码，重启即可生效
 
 ### 5. 初始化系统
 
@@ -292,6 +334,28 @@ python main.py --setup
 ```
 
 ## 使用指南
+
+### 快速开始工作流
+
+```bash
+# 步骤1：检查系统状态和配置
+python main.py --status
+
+# 步骤2：添加自定义话题（可选）
+python add_custom_topic.py "小米汽车分析" "小米汽车,小米SU7,电动车"
+
+# 步骤3：运行话题提取（获取热点新闻和关键词）
+python main.py --broad-topic
+
+# 步骤4：运行爬虫（基于关键词爬取各平台内容）
+python main.py --deep-sentiment --platforms bili --test
+
+# 步骤5：检查爬取结果
+python check_crawled_data.py
+
+# 或者一次性运行完整流程
+python main.py --complete --test
+```
 
 ### 完整流程
 
@@ -356,7 +420,6 @@ python main.py --deep-sentiment --platforms tieba --test
 # 知乎
 python main.py --deep-sentiment --platforms zhihu --test
 ```
-
 ### 登录问题排除
 
 **如果登录失败或卡住：**
@@ -383,7 +446,203 @@ python main.py --complete --max-keywords 20 --max-notes 30
 
 ### 高级功能
 
-#### 1. 指定日期操作
+#### 1. 自定义话题管理
+
+使用 `add_custom_topic.py` 管理自定义话题：
+
+**添加话题**：
+```bash
+# 基本用法
+python add_custom_topic.py "话题名称" "关键词1,关键词2,关键词3"
+
+# 示例：添加小米汽车话题
+python add_custom_topic.py "小米汽车分析" "小米汽车,小米SU7,电动车"
+
+# 示例：添加AI技术话题
+python add_custom_topic.py "AI技术趋势" "人工智能,ChatGPT,大模型,AI应用"
+
+# 带描述的话题
+python add_custom_topic.py "新能源汽车" "电动车,充电桩,续航" "新能源汽车市场分析"
+```
+
+**查看所有话题**：
+```bash
+# 列出数据库中的所有话题
+python add_custom_topic.py --list
+```
+
+**删除话题**：
+```bash
+# 按话题名称删除
+python add_custom_topic.py --delete "小米汽车分析"
+
+# 按话题ID删除
+python add_custom_topic.py --delete-id "custom_20251117_140530"
+
+# 查看帮助
+python add_custom_topic.py --help
+```
+
+**功能说明**：
+- ✅ 添加话题：自动生成话题ID，支持多个关键词
+- ✅ 查看话题：列出所有话题及其关键词、状态
+- ✅ 删除话题：支持按名称或ID删除，需确认
+- ✅ 自动保存到 `daily_topics` 表
+- ✅ 添加后可直接用于爬取
+
+**查看话题示例输出**：
+```
+================================================================================
+话题列表
+================================================================================
+
+1. 小米汽车分析
+   ID: custom_20251117_140530
+   关键词: 小米汽车, 小米SU7, 电动车
+   日期: 2025-11-17
+   状态: pending
+
+2. AI技术趋势
+   ID: custom_20251117_141205
+   关键词: 人工智能, ChatGPT, 大模型, AI应用
+   日期: 2025-11-17
+   状态: pending
+
+================================================================================
+总计: 2 个话题
+================================================================================
+```
+
+**删除话题示例输出**：
+```bash
+$ python add_custom_topic.py --delete "小米汽车分析"
+
+即将删除以下话题:
+  话题名称: 小米汽车分析
+  话题ID: custom_20251117_140530
+  关键词: 小米汽车, 小米SU7, 电动车
+
+确认删除该话题吗？(yes/no): yes
+
+删除成功!
+已删除话题: 小米汽车分析
+```
+
+#### 2. 检查和管理爬取数据
+
+使用 `check_crawled_data.py` 查看和管理已爬取的数据：
+
+**查看所有平台数据统计**：
+```bash
+# 查看所有平台的数据汇总
+python check_crawled_data.py
+```
+
+**查看指定平台数据**：
+```bash
+# 查看B站数据
+python check_crawled_data.py --platform bili
+
+# 查看微博数据
+python check_crawled_data.py --platform weibo
+
+# 查看小红书数据
+python check_crawled_data.py --platform xhs
+
+# 支持的平台：bili, weibo, xhs, douyin, kuaishou, tieba, zhihu
+```
+
+**清空数据**：
+```bash
+# 清空B站所有数据（需要确认）
+python check_crawled_data.py --platform bili --clear
+
+# 清空包含特定关键词的数据
+python check_crawled_data.py --platform bili --clear --keyword "阿里巴巴"
+
+# 查看帮助信息
+python check_crawled_data.py --help
+```
+
+**输出信息**：
+- 总视频数量和评论数量
+- 最新爬取的5条视频详情
+- 关键词覆盖情况统计（自动从 `daily_topics` 表读取）
+- 数据质量概览
+
+**所有平台统计示例输出**：
+```
+============================================================
+所有平台数据统计
+============================================================
+
+B站:
+  内容: 20 条
+  评论: 149 条
+
+微博:
+  内容: 0 条
+  评论: 0 条
+
+============================================================
+总计: 20 条内容, 149 条评论
+============================================================
+```
+
+**单平台详细统计示例输出**：
+```
+============================================================
+B站数据统计
+============================================================
+
+总内容数量: 20 条
+总评论数量: 149 条
+
+============================================================
+最新爬取的内容（前5条）
+============================================================
+
+ID: 785508801
+标题: 306 阿里巴巴集团控股有限公司股权结构分析...
+点赞: 22 | 评论: 1
+
+ID: 115125323303468
+标题: 【Z哥】8.31 讲解阿里巴巴大致走势...
+点赞: 32 | 评论: 5
+
+...
+
+============================================================
+关键词覆盖情况
+============================================================
+阿里巴巴: 16 条内容
+
+============================================================
+总计: 20 条内容, 149 条评论
+============================================================
+```
+
+**清空数据示例输出**：
+```bash
+# 清空特定关键词数据
+$ python check_crawled_data.py --clear --keyword "小米汽车"
+
+正在清空包含关键词 '小米汽车' 的数据...
+找到 18 条相关视频
+确认删除这 18 条视频及其评论吗？(yes/no): yes
+
+删除成功!
+- 删除视频: 18 条
+- 删除评论: 245 条
+```
+
+**安全提示**：
+- ⚠️ 清空操作不可恢复，请谨慎使用
+- ✅ 所有清空操作都需要输入 `yes` 确认
+- ✅ 支持按关键词精确清空，避免误删
+- ✅ 清空前会显示将要删除的数据量
+
+#### 3. 指定日期操作
 ```bash
 # 提取指定日期的话题
 python main.py --broad-topic --date 2024-01-15
@@ -392,7 +651,7 @@ python main.py --broad-topic --date 2024-01-15
 python main.py --deep-sentiment --date 2024-01-15
 ```
 
-#### 2. 指定平台爬取
+#### 4. 指定平台爬取
 ```bash
 # 只爬取小红书和抖音
 python main.py --deep-sentiment --platforms xhs dy --test
@@ -400,6 +659,54 @@ python main.py --deep-sentiment --platforms xhs dy --test
 # 爬取所有平台的特定数量内容
 python main.py --deep-sentiment --max-keywords 30 --max-notes 20
 ```
+
+## 配置管理
+
+### 统一配置架构
+
+MindSpider采用**统一的环境变量配置管理**，所有配置项都从 `.env` 文件读取：
+
+```
+项目根目录/.env
+    ↓
+    ├─→ MindSpider主项目 (通过 config.py + pydantic-settings)
+    └─→ MediaCrawler子项目 (通过 db_config.py + os.getenv)
+```
+
+### 配置文件位置
+
+- **主配置文件**：`d:\Python-Learning\bettafish\.env`
+- **配置管理器**：`config.py`（主项目）
+- **子项目配置**：`DeepSentimentCrawling/MediaCrawler/config/db_config.py`
+
+### 切换数据库
+
+只需修改 `.env` 文件：
+
+```bash
+# 使用PostgreSQL
+DB_DIALECT=postgresql
+DB_PORT=5432
+
+# 使用MySQL
+DB_DIALECT=mysql
+DB_PORT=3306
+```
+
+### 配置优先级
+
+```
+实际环境变量 > .env文件 > 代码默认值
+```
+
+### 配置最佳实践
+
+1. ✅ **单一配置源**：只修改 `.env` 文件
+2. ✅ **敏感信息保护**：`.env` 文件不要提交到Git
+3. ✅ **环境隔离**：开发/测试/生产使用不同的 `.env` 文件
+4. ✅ **配置验证**：运行 `python main.py --status` 检查配置
+
+详细说明请参考：`docs/数据库配置统一说明.md`
 
 ## 常用参数
 
@@ -441,8 +748,15 @@ python main.py --deep-sentiment --platforms xhs --test
 # 检查配置
 python main.py --status
 
-# 检查config.py中的数据库配置是否正确
+# 检查.env文件中的数据库配置是否正确
+# 确认数据库类型、端口、用户名、密码等配置项
 ```
+
+**常见原因**：
+- `.env` 文件位置不对（应在项目根目录）
+- 数据库类型与端口不匹配（MySQL用3306，PostgreSQL用5432）
+- 数据库服务未启动
+- 用户名或密码错误
 
 ### 3. playwright安装失败
 ```bash
@@ -464,6 +778,145 @@ playwright install
 ### 5. API调用失败
 - 检查DeepSeek API密钥是否正确
 - 确认API额度是否充足
+
+## 日志文件管理
+
+### 日志文件位置
+
+所有爬虫运行日志自动保存在：
+```
+d:\Python-Learning\bettafish\MindSpider\logs\
+```
+
+### 日志文件命名
+
+每个平台有独立的日志文件：
+
+| 平台代码 | 日志文件名 | 说明 |
+|---------|-----------|------|
+| `xhs` | `xiaohongshu.log` | 小红书爬虫日志 |
+| `dy` | `douyin.log` | 抖音爬虫日志 |
+| `ks` | `kuaishou.log` | 快手爬虫日志 |
+| `bili` | `bilibili.log` | B站爬虫日志 |
+| `wb` | `weibo.log` | 微博爬虫日志 |
+| `tieba` | `tieba.log` | 贴吧爬虫日志 |
+| `zhihu` | `zhihu.log` | 知乎爬虫日志 |
+
+### 使用方法
+
+**运行爬虫时自动创建日志**：
+
+```bash
+cd MindSpider
+
+# 快手爬虫 - 日志保存到 logs/kuaishou.log
+python main.py --deep-sentiment --platforms ks --test
+
+# 知乎爬虫 - 日志保存到 logs/zhihu.log
+python main.py --deep-sentiment --platforms zhihu --test
+
+# 多平台同时运行，每个平台有独立日志文件
+python main.py --deep-sentiment --platforms ks zhihu wb --test
+```
+
+### 查看日志
+
+**Windows PowerShell**：
+
+```powershell
+# 查看快手日志（最后100行）
+Get-Content logs\kuaishou.log -Tail 100
+
+# 实时监控日志（类似 tail -f）
+Get-Content logs\kuaishou.log -Wait
+
+# 搜索特定内容
+Select-String -Path logs\kuaishou.log -Pattern "comments count"
+```
+
+**Windows CMD**：
+
+```cmd
+# 查看完整日志（注意：CMD 可能显示中文乱码）
+type logs\kuaishou.log
+
+# 搜索特定内容
+findstr "comments count" logs\kuaishou.log
+findstr "ERROR" logs\kuaishou.log
+```
+
+**避免中文乱码**：
+
+日志文件使用 UTF-8 编码保存。如果在 Windows CMD 中看到乱码，请使用以下方法：
+
+1. **使用 PowerShell**（推荐）：
+   ```powershell
+   Get-Content logs\kuaishou.log -Encoding UTF8 -Tail 100
+   ```
+
+2. **使用文本编辑器**：
+   - 用 VS Code、Notepad++ 等编辑器打开日志文件
+   - 确保编码设置为 UTF-8
+
+3. **使用 Python 查看**：
+   ```bash
+   python -c "with open('logs/kuaishou.log', 'r', encoding='utf-8') as f: print(f.read())"
+   ```
+
+### 日志格式
+
+```
+2025-11-17 16:33:09 | INFO | 开始爬取平台: ks
+2025-11-17 16:33:10 | INFO | [KuaiShouClient.get_video_all_comments] photo_id:xxx, comments_res keys:...
+2025-11-17 16:33:11 | ERROR | 爬取失败: 未知错误
+```
+
+包含：
+- **时间戳**：精确到秒
+- **日志级别**：INFO / WARNING / ERROR
+- **日志内容**：详细的操作信息
+
+### 日志管理
+
+**自动轮转**：
+- **大小限制**：单个日志文件超过 **10 MB** 时自动轮转
+- **保留时间**：保留最近 **7 天** 的日志
+- **压缩**：旧日志自动压缩为 `.zip` 格式
+
+**手动清理**：
+
+```bash
+# 删除所有日志文件
+cd MindSpider
+rmdir /s /q logs
+
+# 删除特定平台日志
+del logs\kuaishou.log
+```
+
+### 诊断问题示例
+
+**查看快手评论相关日志**：
+
+```bash
+cd MindSpider
+
+# 查看评论API调用
+findstr "get_video_all_comments" logs\kuaishou.log
+
+# 查看评论数量
+findstr "comments count" logs\kuaishou.log
+
+# 查看错误信息
+findstr "ERROR" logs\kuaishou.log
+```
+
+**关键日志标记**：
+
+1. **API响应**：`[KuaiShouClient.get_video_all_comments] photo_id:xxx, comments_res keys:...`
+2. **评论数量**：`[KuaiShouClient.get_video_all_comments] photo_id:xxx, pcursor:xxx, comments count:0`
+3. **总评论数**：`[KuaiShouClient.get_video_all_comments] photo_id:xxx, total comments fetched:0`
+4. **存储调用**：`[store.kuaishou.batch_update_ks_video_comments] video_id:xxx, comments:[]`
 
 ## 注意事项
 

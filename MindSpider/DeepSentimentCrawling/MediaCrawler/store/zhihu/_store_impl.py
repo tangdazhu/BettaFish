@@ -32,6 +32,7 @@ from tools import utils, words
 from var import crawler_type_var
 from tools.async_file_writer import AsyncFileWriter
 
+
 def calculate_number_of_files(file_store_path: str) -> int:
     """计算数据保存文件的前部分排序数字，支持每次运行代码不写到同一个文件中
     Args:
@@ -42,7 +43,15 @@ def calculate_number_of_files(file_store_path: str) -> int:
     if not os.path.exists(file_store_path):
         return 1
     try:
-        return max([int(file_name.split("_")[0]) for file_name in os.listdir(file_store_path)]) + 1
+        return (
+            max(
+                [
+                    int(file_name.split("_")[0])
+                    for file_name in os.listdir(file_store_path)
+                ]
+            )
+            + 1
+        )
     except ValueError:
         return 1
 
@@ -50,7 +59,9 @@ def calculate_number_of_files(file_store_path: str) -> int:
 class ZhihuCsvStoreImplement(AbstractStore):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.writer = AsyncFileWriter(platform="zhihu", crawler_type=crawler_type_var.get())
+        self.writer = AsyncFileWriter(
+            platform="zhihu", crawler_type=crawler_type_var.get()
+        )
 
     async def store_content(self, content_item: Dict):
         """
@@ -94,6 +105,17 @@ class ZhihuDbStoreImplement(AbstractStore):
             content_item: content item dict
         """
         content_id = content_item.get("content_id")
+
+        # 将时间戳字段转换为字符串（数据库字段类型是String）
+        if "created_time" in content_item and isinstance(
+            content_item["created_time"], int
+        ):
+            content_item["created_time"] = str(content_item["created_time"])
+        if "updated_time" in content_item and isinstance(
+            content_item["updated_time"], int
+        ):
+            content_item["updated_time"] = str(content_item["updated_time"])
+
         async with get_session() as session:
             stmt = select(ZhihuContent).where(ZhihuContent.content_id == content_id)
             result = await session.execute(stmt)
@@ -113,6 +135,13 @@ class ZhihuDbStoreImplement(AbstractStore):
             comment_item: comment item dict
         """
         comment_id = comment_item.get("comment_id")
+
+        # 将时间戳字段转换为字符串（数据库字段类型是String）
+        if "publish_time" in comment_item and isinstance(
+            comment_item["publish_time"], int
+        ):
+            comment_item["publish_time"] = str(comment_item["publish_time"])
+
         async with get_session() as session:
             stmt = select(ZhihuComment).where(ZhihuComment.comment_id == comment_id)
             result = await session.execute(stmt)
@@ -148,7 +177,9 @@ class ZhihuDbStoreImplement(AbstractStore):
 class ZhihuJsonStoreImplement(AbstractStore):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.writer = AsyncFileWriter(platform="zhihu", crawler_type=crawler_type_var.get())
+        self.writer = AsyncFileWriter(
+            platform="zhihu", crawler_type=crawler_type_var.get()
+        )
 
     async def store_content(self, content_item: Dict):
         """
@@ -159,7 +190,9 @@ class ZhihuJsonStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.writer.write_single_item_to_json(item_type="contents", item=content_item)
+        await self.writer.write_single_item_to_json(
+            item_type="contents", item=content_item
+        )
 
     async def store_comment(self, comment_item: Dict):
         """
@@ -170,7 +203,9 @@ class ZhihuJsonStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.writer.write_single_item_to_json(item_type="comments", item=comment_item)
+        await self.writer.write_single_item_to_json(
+            item_type="comments", item=comment_item
+        )
 
     async def store_creator(self, creator: Dict):
         """
@@ -188,4 +223,5 @@ class ZhihuSqliteStoreImplement(ZhihuDbStoreImplement):
     """
     Zhihu content SQLite storage implementation
     """
+
     pass

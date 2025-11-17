@@ -20,6 +20,17 @@ from config import settings
 from loguru import logger
 from urllib.parse import quote_plus
 
+# 平台名称映射
+PLATFORM_NAME_MAP = {
+    "xhs": "xiaohongshu",
+    "dy": "douyin",
+    "ks": "kuaishou",
+    "bili": "bilibili",
+    "wb": "weibo",
+    "tieba": "tieba",
+    "zhihu": "zhihu",
+}
+
 # 添加项目根目录到路径
 project_root = Path(__file__).parent
 sys.path.append(str(project_root))
@@ -41,6 +52,10 @@ class MindSpider:
         self.broad_topic_path = self.project_root / "BroadTopicExtraction"
         self.deep_sentiment_path = self.project_root / "DeepSentimentCrawling"
         self.schema_path = self.project_root / "schema"
+        self.logs_path = self.project_root / "logs"
+
+        # 创建logs目录
+        self.logs_path.mkdir(exist_ok=True)
 
         logger.info("MindSpider AI爬虫项目")
         logger.info(f"项目路径: {self.project_root}")
@@ -268,6 +283,13 @@ class MindSpider:
                 cmd.append("--test")
 
             logger.info(f"执行命令: {' '.join(cmd)}")
+
+            # 为每个平台创建日志文件
+            if platforms:
+                for platform in platforms:
+                    platform_name = PLATFORM_NAME_MAP.get(platform, platform)
+                    log_file = self.logs_path / f"{platform_name}.log"
+                    logger.info(f"平台 {platform} 的日志将保存到: {log_file}")
 
             result = subprocess.run(
                 cmd, cwd=self.deep_sentiment_path, timeout=3600  # 60分钟超时

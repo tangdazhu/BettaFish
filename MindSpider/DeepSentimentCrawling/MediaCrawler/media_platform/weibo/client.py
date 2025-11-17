@@ -58,30 +58,83 @@ class WeiboClient:
         if enable_return_response:
             return response
 
-        data: Dict = response.json()
+        # 检查响应状态码
+        if response.status_code != 200:
+            utils.logger.error(
+                f"[WeiboClient.request] HTTP {response.status_code}: {method}:{url}"
+            )
+            utils.logger.error(
+                f"[WeiboClient.request] Response content: {response.text[:500]}"
+            )
+
+            # 特殊处理微博的反爬虫错误码
+            if response.status_code == 432:
+                utils.logger.error("[WeiboClient.request] 微博反爬虫拦截 (HTTP 432)")
+                utils.logger.error("[WeiboClient.request] 可能原因：")
+                utils.logger.error("  1. Cookie已过期，需要重新登录")
+                utils.logger.error("  2. 请求频率过快，需要降低爬取速度")
+                utils.logger.error("  3. IP被限制，需要使用代理")
+                utils.logger.error("  4. 需要验证码验证")
+                utils.logger.error("[WeiboClient.request] 建议：")
+                utils.logger.error("  - 删除 cookies/weibo_cookies.json 后重新登录")
+                utils.logger.error(
+                    "  - 在 base_config.py 中增加 CRAWLER_MAX_NOTES_COUNT"
+                )
+                utils.logger.error("  - 使用代理IP")
+                raise DataFetchError(
+                    "微博反爬虫拦截 (HTTP 432)，Cookie可能已过期，请重新登录"
+                )
+
+            raise DataFetchError(f"HTTP {response.status_code}")
+
+        # 尝试解析JSON
+        try:
+            data: Dict = response.json()
+        except Exception as e:
+            utils.logger.error(f"[WeiboClient.request] JSON parse error: {e}")
+            utils.logger.error(
+                f"[WeiboClient.request] Response status: {response.status_code}"
+            )
+            utils.logger.error(
+                f"[WeiboClient.request] Response headers: {dict(response.headers)}"
+            )
+            utils.logger.error(
+                f"[WeiboClient.request] Response content: {response.text[:1000]}"
+            )
+            raise DataFetchError(f"Failed to parse JSON response: {e}")
+
         ok_code = data.get("ok")
         if ok_code == 0:  # response error
-            utils.logger.error(f"[WeiboClient.request] request {method}:{url} err, res:{data}")
+            utils.logger.error(
+                f"[WeiboClient.request] request {method}:{url} err, res:{data}"
+            )
             raise DataFetchError(data.get("msg", "response error"))
         elif ok_code != 1:  # unknown error
-            utils.logger.error(f"[WeiboClient.request] request {method}:{url} err, res:{data}")
+            utils.logger.error(
+                f"[WeiboClient.request] request {method}:{url} err, res:{data}"
+            )
             raise DataFetchError(data.get("msg", "unknown error"))
         else:  # response right
             return data.get("data", {})
 
-    async def get(self, uri: str, params=None, headers=None, **kwargs) -> Union[Response, Dict]:
+    async def get(
+        self, uri: str, params=None, headers=None, **kwargs
+    ) -> Union[Response, Dict]:
         final_uri = uri
         if isinstance(params, dict):
-            final_uri = (f"{uri}?"
-                         f"{urlencode(params)}")
+            final_uri = f"{uri}?" f"{urlencode(params)}"
 
         if headers is None:
             headers = self.headers
-        return await self.request(method="GET", url=f"{self._host}{final_uri}", headers=headers, **kwargs)
+        return await self.request(
+            method="GET", url=f"{self._host}{final_uri}", headers=headers, **kwargs
+        )
 
     async def post(self, uri: str, data: dict) -> Dict:
-        json_str = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
-        return await self.request(method="POST", url=f"{self._host}{uri}", data=json_str, headers=self.headers)
+        json_str = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+        return await self.request(
+            method="POST", url=f"{self._host}{uri}", data=json_str, headers=self.headers
+        )
 
     async def pong(self) -> bool:
         """get a note to check if login state is ok"""
@@ -89,13 +142,19 @@ class WeiboClient:
         ping_flag = False
         try:
             uri = "/api/config"
-            resp_data: Dict = await self.request(method="GET", url=f"{self._host}{uri}", headers=self.headers)
+            resp_data: Dict = await self.request(
+                method="GET", url=f"{self._host}{uri}", headers=self.headers
+            )
             if resp_data.get("login"):
                 ping_flag = True
             else:
-                utils.logger.error(f"[WeiboClient.pong] cookie may be invalid and again login...")
+                utils.logger.error(
+                    f"[WeiboClient.pong] cookie may be invalid and again login..."
+                )
         except Exception as e:
-            utils.logger.error(f"[WeiboClient.pong] Pong weibo failed: {e}, and try to login again...")
+            utils.logger.error(
+                f"[WeiboClient.pong] Pong weibo failed: {e}, and try to login again..."
+            )
             ping_flag = False
         return ping_flag
 
@@ -126,7 +185,9 @@ class WeiboClient:
         }
         return await self.get(uri, params)
 
-    async def get_note_comments(self, mid_id: str, max_id: int, max_id_type: int = 0) -> Dict:
+    async def get_note_comments(
+        self, mid_id: str, max_id: int, max_id_type: int = 0
+    ) -> Dict:
         """get notes comments
         :param mid_id: 微博ID
         :param max_id: 分页参数ID
@@ -173,12 +234,14 @@ class WeiboClient:
             comment_list: List[Dict] = comments_res.get("data", [])
             is_end = max_id == 0
             if len(result) + len(comment_list) > max_count:
-                comment_list = comment_list[:max_count - len(result)]
+                comment_list = comment_list[: max_count - len(result)]
             if callback:  # 如果有回调函数，就执行回调函数
                 await callback(note_id, comment_list)
             await asyncio.sleep(crawl_interval)
             result.extend(comment_list)
-            sub_comment_result = await self.get_comments_all_sub_comments(note_id, comment_list, callback)
+            sub_comment_result = await self.get_comments_all_sub_comments(
+                note_id, comment_list, callback
+            )
             result.extend(sub_comment_result)
         return result
 
@@ -199,7 +262,9 @@ class WeiboClient:
 
         """
         if not config.ENABLE_GET_SUB_COMMENTS:
-            utils.logger.info(f"[WeiboClient.get_comments_all_sub_comments] Crawling sub_comment mode is not enabled")
+            utils.logger.info(
+                f"[WeiboClient.get_comments_all_sub_comments] Crawling sub_comment mode is not enabled"
+            )
             return []
 
         res_sub_comments = []
@@ -218,10 +283,14 @@ class WeiboClient:
         """
         url = f"{self._host}/detail/{note_id}"
         async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request("GET", url, timeout=self.timeout, headers=self.headers)
+            response = await client.request(
+                "GET", url, timeout=self.timeout, headers=self.headers
+            )
             if response.status_code != 200:
                 raise DataFetchError(f"get weibo detail err: {response.text}")
-            match = re.search(r'var \$render_data = (\[.*?\])\[0\]', response.text, re.DOTALL)
+            match = re.search(
+                r"var \$render_data = (\[.*?\])\[0\]", response.text, re.DOTALL
+            )
             if match:
                 render_data_json = match.group(1)
                 render_data_dict = json.loads(render_data_json)
@@ -229,7 +298,9 @@ class WeiboClient:
                 note_item = {"mblog": note_detail}
                 return note_item
             else:
-                utils.logger.info(f"[WeiboClient.get_note_info_by_id] 未找到$render_data的值")
+                utils.logger.info(
+                    f"[WeiboClient.get_note_info_by_id] 未找到$render_data的值"
+                )
                 return dict()
 
     async def get_note_image(self, image_url: str) -> bytes:
@@ -245,19 +316,24 @@ class WeiboClient:
                 image_url += sub_url[i] + "/"
         # 微博图床对外存在防盗链，所以需要代理访问
         # 由于微博图片是通过 i1.wp.com 来访问的，所以需要拼接一下
-        final_uri = (f"{self._image_agent_host}"
-                     f"{image_url}")
+        final_uri = f"{self._image_agent_host}" f"{image_url}"
         async with httpx.AsyncClient(proxy=self.proxy) as client:
             try:
                 response = await client.request("GET", final_uri, timeout=self.timeout)
                 response.raise_for_status()
                 if not response.reason_phrase == "OK":
-                    utils.logger.error(f"[WeiboClient.get_note_image] request {final_uri} err, res:{response.text}")
+                    utils.logger.error(
+                        f"[WeiboClient.get_note_image] request {final_uri} err, res:{response.text}"
+                    )
                     return None
                 else:
                     return response.content
-            except httpx.HTTPError as exc:  # some wrong when call httpx.request method, such as connection error, client error, server error or response status code is not 2xx
-                utils.logger.error(f"[DouYinClient.get_aweme_media] {exc.__class__.__name__} for {exc.request.url} - {exc}")    # 保留原始异常类型名称，以便开发者调试
+            except (
+                httpx.HTTPError
+            ) as exc:  # some wrong when call httpx.request method, such as connection error, client error, server error or response status code is not 2xx
+                utils.logger.error(
+                    f"[DouYinClient.get_aweme_media] {exc.__class__.__name__} for {exc.request.url} - {exc}"
+                )  # 保留原始异常类型名称，以便开发者调试
                 return None
 
     async def get_creator_container_info(self, creator_id: str) -> Dict:
@@ -276,7 +352,10 @@ class WeiboClient:
         if not m_weibocn_params:
             raise DataFetchError("get containerid failed")
         m_weibocn_params_dict = parse_qs(unquote(m_weibocn_params))
-        return {"fid_container_id": m_weibocn_params_dict.get("fid", [""])[0], "lfid_container_id": m_weibocn_params_dict.get("lfid", [""])[0]}
+        return {
+            "fid_container_id": m_weibocn_params_dict.get("fid", [""])[0],
+            "lfid_container_id": m_weibocn_params_dict.get("lfid", [""])[0],
+        }
 
     async def get_creator_info_by_id(self, creator_id: str) -> Dict:
         """
@@ -289,8 +368,13 @@ class WeiboClient:
         """
         uri = "/api/container/getIndex"
         container_info = await self.get_creator_container_info(creator_id)
-        if container_info.get("fid_container_id") == "" or container_info.get("lfid_container_id") == "":
-            utils.logger.error(f"[WeiboClient.get_creator_info_by_id] get containerid failed")
+        if (
+            container_info.get("fid_container_id") == ""
+            or container_info.get("lfid_container_id") == ""
+        ):
+            utils.logger.error(
+                f"[WeiboClient.get_creator_info_by_id] get containerid failed"
+            )
             raise DataFetchError("get containerid failed")
         params = {
             "jumpfrom": "weibocom",
@@ -360,22 +444,32 @@ class WeiboClient:
         since_id = ""
         crawler_total_count = 0
         while notes_has_more:
-            notes_res = await self.get_notes_by_creator(creator_id, container_id, since_id)
+            notes_res = await self.get_notes_by_creator(
+                creator_id, container_id, since_id
+            )
             if not notes_res:
-                utils.logger.error(f"[WeiboClient.get_notes_by_creator] The current creator may have been banned by xhs, so they cannot access the data.")
+                utils.logger.error(
+                    f"[WeiboClient.get_notes_by_creator] The current creator may have been banned by xhs, so they cannot access the data."
+                )
                 break
             since_id = notes_res.get("cardlistInfo", {}).get("since_id", "0")
             if "cards" not in notes_res:
-                utils.logger.info(f"[WeiboClient.get_all_notes_by_creator] No 'notes' key found in response: {notes_res}")
+                utils.logger.info(
+                    f"[WeiboClient.get_all_notes_by_creator] No 'notes' key found in response: {notes_res}"
+                )
                 break
 
             notes = notes_res["cards"]
-            utils.logger.info(f"[WeiboClient.get_all_notes_by_creator] got user_id:{creator_id} notes len : {len(notes)}")
+            utils.logger.info(
+                f"[WeiboClient.get_all_notes_by_creator] got user_id:{creator_id} notes len : {len(notes)}"
+            )
             notes = [note for note in notes if note.get("card_type") == 9]
             if callback:
                 await callback(notes)
             await asyncio.sleep(crawl_interval)
             result.extend(notes)
             crawler_total_count += 10
-            notes_has_more = notes_res.get("cardlistInfo", {}).get("total", 0) > crawler_total_count
+            notes_has_more = (
+                notes_res.get("cardlistInfo", {}).get("total", 0) > crawler_total_count
+            )
         return result

@@ -9,6 +9,8 @@ aiomysql==0.2.0
 aiosqlite==0.21.0
 asyncpg
 sqlalchemy
+psycopg[binary]>=3.1.0
+psycopg2-binary>=2.9.0
 
 # ===============================
 # HTTP请求和网络
@@ -36,6 +38,7 @@ tenacity==8.2.2
 opencv-python
 redis~=4.6.0
 pydantic==2.5.2
+pydantic-settings==2.1.0
 fastapi==0.110.2
 uvicorn==0.29.0
 python-dotenv==1.0.1

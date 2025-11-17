@@ -1,22 +1,22 @@
-# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：  
-# 1. 不得用于任何商业用途。  
-# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。  
-# 3. 不得进行大规模爬取或对平台造成运营干扰。  
-# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。   
+# 声明：本代码仅供学习和研究目的使用。使用者应遵守以下原则：
+# 1. 不得用于任何商业用途。
+# 2. 使用时应遵守目标平台的使用条款和robots.txt规则。
+# 3. 不得进行大规模爬取或对平台造成运营干扰。
+# 4. 应合理控制请求频率，避免给目标平台带来不必要的负担。
 # 5. 不得用于任何非法或不当的用途。
-#   
-# 详细许可条款请参阅项目根目录下的LICENSE文件。  
-# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。  
+#
+# 详细许可条款请参阅项目根目录下的LICENSE文件。
+# 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 
 import os
 
-# mysql config - 使用MindSpider的数据库配置
-MYSQL_DB_PWD = "bettafish"
-MYSQL_DB_USER = "bettafish"
-MYSQL_DB_HOST = "127.0.0.1"
-MYSQL_DB_PORT = 5444
-MYSQL_DB_NAME = "bettafish"
+# mysql config - 从环境变量读取，与BettaFish主项目保持一致
+MYSQL_DB_PWD = os.getenv("DB_PASSWORD", "bettafish_2024")
+MYSQL_DB_USER = os.getenv("DB_USER", "bettafish")
+MYSQL_DB_HOST = os.getenv("DB_HOST", "localhost")
+MYSQL_DB_PORT = int(os.getenv("DB_PORT", "5432"))
+MYSQL_DB_NAME = os.getenv("DB_NAME", "bettafish")
 
 mysql_db_config = {
     "user": MYSQL_DB_USER,
@@ -38,18 +38,18 @@ CACHE_TYPE_REDIS = "redis"
 CACHE_TYPE_MEMORY = "memory"
 
 # sqlite config
-SQLITE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db")
+SQLITE_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "database", "sqlite_tables.db"
+)
 
-sqlite_db_config = {
-    "db_path": SQLITE_DB_PATH
-}
+sqlite_db_config = {"db_path": SQLITE_DB_PATH}
 
-# postgresql config - 使用MindSpider的数据库配置（如果DB_DIALECT是postgresql）或环境变量
-POSTGRESQL_DB_PWD = os.getenv("POSTGRESQL_DB_PWD", "bettafish")
-POSTGRESQL_DB_USER = os.getenv("POSTGRESQL_DB_USER", "bettafish")
-POSTGRESQL_DB_HOST = os.getenv("POSTGRESQL_DB_HOST", "127.0.0.1")
-POSTGRESQL_DB_PORT = os.getenv("POSTGRESQL_DB_PORT", "5444")
-POSTGRESQL_DB_NAME = os.getenv("POSTGRESQL_DB_NAME", "bettafish")
+# postgresql config - 从环境变量读取，与BettaFish主项目保持一致
+POSTGRESQL_DB_PWD = os.getenv("DB_PASSWORD", "bettafish_2024")
+POSTGRESQL_DB_USER = os.getenv("DB_USER", "bettafish")
+POSTGRESQL_DB_HOST = os.getenv("DB_HOST", "localhost")
+POSTGRESQL_DB_PORT = os.getenv("DB_PORT", "5432")
+POSTGRESQL_DB_NAME = os.getenv("DB_NAME", "bettafish")
 
 postgresql_db_config = {
     "user": POSTGRESQL_DB_USER,
@@ -58,4 +58,3 @@ postgresql_db_config = {
     "port": POSTGRESQL_DB_PORT,
     "db_name": POSTGRESQL_DB_NAME,
 }
-

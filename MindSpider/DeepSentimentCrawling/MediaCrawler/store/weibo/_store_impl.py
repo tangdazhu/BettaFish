@@ -43,7 +43,15 @@ def calculate_number_of_files(file_store_path: str) -> int:
     if not os.path.exists(file_store_path):
         return 1
     try:
-        return max([int(file_name.split("_")[0]) for file_name in os.listdir(file_store_path)]) + 1
+        return (
+            max(
+                [
+                    int(file_name.split("_")[0])
+                    for file_name in os.listdir(file_store_path)
+                ]
+            )
+            + 1
+        )
     except ValueError:
         return 1
 
@@ -51,7 +59,9 @@ def calculate_number_of_files(file_store_path: str) -> int:
 class WeiboCsvStoreImplement(AbstractStore):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.writer = AsyncFileWriter(platform="weibo", crawler_type=crawler_type_var.get())
+        self.writer = AsyncFileWriter(
+            platform="weibo", crawler_type=crawler_type_var.get()
+        )
 
     async def store_content(self, content_item: Dict):
         """
@@ -99,6 +109,11 @@ class WeiboDbStoreImplement(AbstractStore):
 
         """
         note_id = content_item.get("note_id")
+        # 将note_id转换为整数（数据库字段类型是BigInteger）
+        if isinstance(note_id, str):
+            note_id = int(note_id)
+            content_item["note_id"] = note_id
+
         async with get_session() as session:
             stmt = select(WeiboNote).where(WeiboNote.note_id == note_id)
             res = await session.execute(stmt)
@@ -125,8 +140,19 @@ class WeiboDbStoreImplement(AbstractStore):
 
         """
         comment_id = comment_item.get("comment_id")
+        # 将ID字段转换为整数（数据库字段类型是BigInteger）
+        if isinstance(comment_id, str):
+            comment_id = int(comment_id)
+            comment_item["comment_id"] = comment_id
+
+        note_id = comment_item.get("note_id")
+        if isinstance(note_id, str):
+            comment_item["note_id"] = int(note_id)
+
         async with get_session() as session:
-            stmt = select(WeiboNoteComment).where(WeiboNoteComment.comment_id == comment_id)
+            stmt = select(WeiboNoteComment).where(
+                WeiboNoteComment.comment_id == comment_id
+            )
             res = await session.execute(stmt)
             db_comment = res.scalar_one_or_none()
             if db_comment:
@@ -171,7 +197,9 @@ class WeiboDbStoreImplement(AbstractStore):
 class WeiboJsonStoreImplement(AbstractStore):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.writer = AsyncFileWriter(platform="weibo", crawler_type=crawler_type_var.get())
+        self.writer = AsyncFileWriter(
+            platform="weibo", crawler_type=crawler_type_var.get()
+        )
 
     async def store_content(self, content_item: Dict):
         """
@@ -182,7 +210,9 @@ class WeiboJsonStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.writer.write_single_item_to_json(item_type="contents", item=content_item)
+        await self.writer.write_single_item_to_json(
+            item_type="contents", item=content_item
+        )
 
     async def store_comment(self, comment_item: Dict):
         """
@@ -193,7 +223,9 @@ class WeiboJsonStoreImplement(AbstractStore):
         Returns:
 
         """
-        await self.writer.write_single_item_to_json(item_type="comments", item=comment_item)
+        await self.writer.write_single_item_to_json(
+            item_type="comments", item=comment_item
+        )
 
     async def store_creator(self, creator: Dict):
         """
@@ -211,4 +243,5 @@ class WeiboSqliteStoreImplement(WeiboDbStoreImplement):
     """
     Weibo content SQLite storage implementation
     """
+
     pass
