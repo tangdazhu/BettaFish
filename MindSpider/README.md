@@ -383,10 +383,10 @@ python main.py --complete --test
 python main.py --broad-topic
 
 # 只爬取特定平台
-python main.py --deep-sentiment --platforms xhs dy --test
+python main.py --deep-sentiment --platforms xhs --test --date 2025-11-17
 
 # 指定日期
-python main.py --broad-topic --date 2024-01-15
+python main.py --broad-topic --date 2024-01-17
 ```
 
 ## 爬虫配置（重要）
