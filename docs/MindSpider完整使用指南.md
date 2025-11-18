@@ -686,6 +686,422 @@ python check_crawled_data.py --help
 
 ---
 
+---
+
+## 平台爬取技术方案
+
+### 技术架构概览
+
+MindSpider 基于 **MediaCrawler** 框架，采用 Playwright + 反爬虫技术实现对7大社交媒体平台的数据爬取。
+
+**核心技术栈**:
+- **浏览器自动化**: Playwright (真实浏览器环境)
+- **反检测**: stealth.min.js (防止网站检测爬虫)
+- **登录管理**: Cookie持久化 + 二维码/手机号登录
+- **请求签名**: 各平台专用签名算法
+- **数据存储**: PostgreSQL/MySQL
+- **情感分析**: 22种语言支持
+
+### 平台测试状态
+
+| 平台 | 状态 | 登录方式 | 反爬虫难度 | 稳定性 |
+|------|------|---------|-----------|--------|
+| B站 (bili) | ✅ 正常 | 二维码/Cookie | ⭐⭐ 低 | ⭐⭐⭐⭐⭐ |
+| 快手 (ks) | ✅ 正常 | 二维码/Cookie | ⭐⭐⭐ 中 | ⭐⭐⭐⭐ |
+| 知乎 (zhihu) | ✅ 正常 | 二维码/Cookie | ⭐⭐⭐ 中 | ⭐⭐⭐⭐ |
+| 微博 (wb) | ✅ 正常 | 二维码/Cookie | ⭐⭐⭐⭐ 高 | ⭐⭐⭐ |
+| 抖音 (dy) | ✅ 正常 | 二维码/Cookie | ⭐⭐⭐⭐ 高 | ⭐⭐⭐ |
+| 小红书 (xhs) | ❌ 问题 | 二维码/手机号/Cookie | ⭐⭐⭐⭐⭐ 极高 | ⭐⭐ |
+| 贴吧 (tieba) | ⚠️ 部分 | Cookie | ⭐⭐ 低 | ⭐⭐⭐ |
+
+---
+
+## 各平台技术方案详解
+
+### 1. B站 (Bilibili) - 最稳定平台
+
+**技术特点**:
+- ✅ 无需登录即可爬取公开内容
+- ✅ WBI签名机制（已破解）
+- ✅ 反爬虫强度低
+- ✅ API稳定性高
+
+**登录方式**:
+```python
+# 1. 二维码登录（推荐）
+config.LOGIN_TYPE = "qrcode"
+
+# 2. Cookie登录
+config.LOGIN_TYPE = "cookie"
+config.COOKIES = "SESSDATA=xxx; DedeUserID=xxx"
+```
+
+**核心技术**:
+1. **WBI签名**: 从localStorage获取wbi_img_urls，计算请求签名
+2. **Stealth.min.js**: 防止浏览器指纹检测
+3. **Cookie管理**: SESSDATA + DedeUserID
+
+**爬取流程**:
+```
+启动浏览器 → 加载stealth.js → 访问首页 → 检查登录状态 
+→ 执行搜索/详情/创作者爬取 → 获取评论 → 存储数据库
+```
+
+**优势**:
+- 无需登录即可爬取
+- API响应速度快
+- 数据结构清晰
+- 很少触发反爬虫
+
+**注意事项**:
+- 长视频需要更长的超时时间（60秒）
+- 建议使用CDP模式提升稳定性
+
+---
+
+### 2. 快手 (Kuaishou) - 稳定可用
+
+**技术特点**:
+- ✅ GraphQL API
+- ✅ 登录按钮需force点击
+- ⚠️ 评论可能为0（已知问题）
+- ✅ 整体稳定
+
+**登录方式**:
+```python
+# 二维码登录（推荐）
+config.LOGIN_TYPE = "qrcode"
+# 使用force=True强制点击登录按钮
+await login_button_ele.click(force=True)
+```
+
+**核心技术**:
+1. **GraphQL查询**: 使用预定义的GraphQL查询模板
+2. **强制点击**: 登录按钮被遮挡，需force=True
+3. **Cookie验证**: 检查passToken
+
+**已修复问题**:
+- ✅ 登录点击超时 → 使用force=True
+- ⚠️ 评论数为0 → 仍在调查
+
+**爬取示例**:
+```bash
+python main.py --deep-sentiment --platforms ks --test
+```
+
+---
+
+### 3. 知乎 (Zhihu) - 稳定可用
+
+**技术特点**:
+- ✅ 需要先访问搜索页面获取Cookie
+- ✅ Canvas二维码登录
+- ✅ 数据类型已修复
+- ✅ 稳定性好
+
+**登录方式**:
+```python
+# 二维码登录（Canvas渲染）
+config.LOGIN_TYPE = "qrcode"
+# 从Canvas元素提取二维码
+base64_qrcode_img = await utils.find_qrcode_img_from_canvas(
+    page, canvas_selector="canvas.Qrcode-qrcode"
+)
+```
+
+**核心技术**:
+1. **Canvas二维码**: 从Canvas元素提取base64图片
+2. **Cookie预热**: 访问搜索页面获取完整Cookie
+3. **类型转换**: 时间戳转字符串（已修复）
+
+**特殊流程**:
+```python
+# 1. 访问首页并登录
+await page.goto("https://www.zhihu.com")
+await login()
+
+# 2. 访问搜索页面获取搜索Cookie（重要！）
+await page.goto("https://www.zhihu.com/search?q=python")
+await asyncio.sleep(5)
+await client.update_cookies()
+
+# 3. 开始爬取
+await search()
+```
+
+**已修复问题**:
+- ✅ 数据类型错误 → created_time/updated_time转字符串
+
+---
+
+### 4. 微博 (Weibo) - 反爬虫较强
+
+**技术特点**:
+- ⚠️ HTTP 432反爬虫拦截
+- ⚠️ Cookie容易过期
+- ✅ 移动端API相对稳定
+- ⚠️ 需要频繁重新登录
+
+**登录方式**:
+```python
+# 二维码登录（移动端）
+config.LOGIN_TYPE = "qrcode"
+# 登录后重定向到移动端
+await page.goto("https://m.weibo.cn")
+```
+
+**核心技术**:
+1. **移动端API**: 使用m.weibo.cn接口
+2. **Cookie双端同步**: PC端登录后同步到移动端
+3. **错误处理**: 详细的HTTP 432错误提示
+
+**常见问题**:
+```python
+# HTTP 432 错误处理
+if response.status_code == 432:
+    logger.error("微博反爬虫拦截 (HTTP 432)")
+    logger.error("可能原因：")
+    logger.error("  1. Cookie已过期，需要重新登录")
+    logger.error("  2. 请求频率过快")
+    logger.error("  3. IP被限制")
+```
+
+**解决方案**:
+1. 删除Cookie重新登录
+2. 降低爬取频率
+3. 使用代理IP
+4. 改用其他平台（推荐B站）
+
+---
+
+### 5. 抖音 (Douyin) - 反爬虫较强
+
+**技术特点**:
+- ⚠️ a-bogus签名（JS版本）
+- ⚠️ 滑块验证码
+- ✅ localStorage登录状态
+- ⚠️ 需要处理验证码中间页
+
+**登录方式**:
+```python
+# 二维码登录
+config.LOGIN_TYPE = "qrcode"
+# 可能需要滑动验证码
+await check_page_display_slider(move_step=3, slider_level="hard")
+```
+
+**核心技术**:
+1. **a-bogus签名**: 动态生成请求签名
+2. **滑块验证**: 自动识别并滑动验证码
+3. **localStorage检查**: HasUserLogin=1
+
+**验证码处理**:
+```python
+# 检查是否有滑动验证码
+await check_page_display_slider(move_step=10, slider_level="easy")
+
+# 如果重定向到验证码中间页
+if "验证码中间页" in await page.title():
+    await check_page_display_slider(move_step=3, slider_level="hard")
+```
+
+**注意事项**:
+- 滑块验证准确率不高
+- 建议使用Cookie登录
+- 需要更长的超时时间（60秒）
+
+---
+
+### 6. 小红书 (XHS) - 反爬虫极强 ❌
+
+**技术特点**:
+- ❌ 反爬虫机制最强
+- ❌ 频繁更新检测规则
+- ❌ 需要手动验证码
+- ❌ 当前不建议使用
+
+**登录方式**:
+```python
+# 1. 二维码登录
+config.LOGIN_TYPE = "qrcode"
+
+# 2. 手机号登录（需要短信验证码）
+config.LOGIN_TYPE = "phone"
+config.LOGIN_PHONE = "your_phone"
+
+# 3. Cookie登录
+config.LOGIN_TYPE = "cookie"
+```
+
+**核心技术**:
+1. **web_session验证**: 检查Cookie中的web_session
+2. **xsec_token**: 每个笔记都有独立的安全令牌
+3. **验证码检测**: "请通过验证"提示
+
+**主要问题**:
+- 登录过程中频繁出现验证码
+- API返回数据结构不稳定
+- Cookie容易失效
+- 搜索结果可能为空
+
+**建议**:
+- ❌ 不建议使用小红书爬取
+- ✅ 改用B站、知乎等稳定平台
+- ⚠️ 如必须使用，建议手动获取Cookie
+
+---
+
+### 7. 贴吧 (Tieba) - 部分支持
+
+**技术特点**:
+- ⚠️ 部分功能支持
+- ✅ Cookie登录
+- ⚠️ 数据结构简单
+
+**状态**: 部分支持，功能有限
+
+---
+
+## 反爬虫技术对比
+
+### 核心反爬虫技术
+
+| 技术 | B站 | 快手 | 知乎 | 微博 | 抖音 | 小红书 |
+|------|-----|------|------|------|------|--------|
+| **请求签名** | WBI | GraphQL | 无 | 无 | a-bogus | xsec |
+| **浏览器指纹** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Cookie验证** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **滑块验证码** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **频率限制** | 低 | 中 | 中 | 高 | 高 | 极高 |
+| **IP封禁** | 少 | 少 | 少 | 多 | 多 | 极多 |
+
+### 破解方案
+
+**1. Playwright真实浏览器**
+```python
+# 使用真实浏览器环境，绕过浏览器指纹检测
+chromium = playwright.chromium
+browser_context = await chromium.launch(
+    headless=config.HEADLESS,
+    proxy=proxy_config
+)
+```
+
+**2. stealth.min.js反检测**
+```python
+# 加载反检测脚本
+await browser_context.add_init_script(path="libs/stealth.min.js")
+```
+
+**3. Cookie持久化**
+```python
+# 保存登录状态
+await browser_context.storage_state(path="cookies/platform_cookies.json")
+
+# 恢复登录状态
+await browser_context.add_cookies(saved_cookies)
+```
+
+**4. 请求签名**
+```python
+# B站WBI签名
+img_key, sub_key = await get_wbi_keys()
+signed_params = BilibiliSign(img_key, sub_key).sign(params)
+
+# 抖音a-bogus签名
+a_bogus = await get_a_bogus(uri, query_string, post_data, user_agent)
+```
+
+**5. 频率控制**
+```python
+# 每页爬取后休眠
+await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
+```
+
+**6. IP代理池**
+```python
+if config.ENABLE_IP_PROXY:
+    ip_proxy_pool = await create_ip_pool(
+        config.IP_PROXY_POOL_COUNT,
+        enable_validate_ip=True
+    )
+```
+
+---
+
+## 最佳实践建议
+
+### 平台选择策略
+
+**优先级排序**:
+1. **B站** - 最稳定，无需登录，推荐首选
+2. **知乎** - 稳定可靠，内容质量高
+3. **快手** - 基本稳定，下沉市场数据
+4. **微博** - 需要注意Cookie过期
+5. **抖音** - 需要处理验证码
+6. **小红书** - 不推荐使用
+
+### 爬取配置建议
+
+```python
+# 推荐配置
+CRAWLER_MAX_NOTES_COUNT = 20  # 每次爬取数量
+CRAWLER_MAX_SLEEP_SEC = 2     # 页面间隔时间
+MAX_CONCURRENCY_NUM = 1        # 并发数（建议为1）
+ENABLE_GET_COMMENTS = True     # 启用评论爬取
+CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20  # 每条内容的评论数
+
+# 登录方式
+LOGIN_TYPE = "qrcode"  # 推荐二维码登录
+# LOGIN_TYPE = "cookie"  # 或使用Cookie登录
+
+# 代理设置（可选）
+ENABLE_IP_PROXY = False  # 一般情况下不需要
+```
+
+### 错误处理建议
+
+```python
+# 1. Cookie过期 → 重新登录
+if "HTTP 432" in error or "未登录" in error:
+    # 删除旧Cookie
+    os.remove("cookies/platform_cookies.json")
+    # 重新运行爬虫
+    python main.py --deep-sentiment --platforms wb --test
+
+# 2. 验证码 → 手动处理或切换平台
+if "验证码" in error:
+    # 建议切换到B站或知乎
+    python main.py --deep-sentiment --platforms bili --test
+
+# 3. 频率限制 → 降低爬取速度
+if "频率" in error or "限制" in error:
+    # 增加休眠时间
+    CRAWLER_MAX_SLEEP_SEC = 5
+```
+
+### 日常维护建议
+
+1. **定期检查Cookie**:
+   ```bash
+   # 每周检查一次登录状态
+   python main.py --deep-sentiment --platforms bili --test
+   ```
+
+2. **监控日志**:
+   ```bash
+   # 查看错误日志
+   Get-Content logs\bilibili.log -Encoding UTF8 -Tail 100 | Select-String "ERROR"
+   ```
+
+3. **数据备份**:
+   ```bash
+   # 定期备份数据库
+   pg_dump -U bettafish -d bettafish > backup_$(date +%Y%m%d).sql
+   ```
+
+---
+
 **文档维护**: BettaFish 项目组  
 **最后更新**: 2025-11-17  
-**版本**: v2.0
+**版本**: v2.1

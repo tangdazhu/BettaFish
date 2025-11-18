@@ -400,6 +400,8 @@ python main.py --deep-sentiment --platforms xhs --test
 ```bash
 # 测试抖音爬取
 python main.py --deep-sentiment --platforms dy --test
+# 测试抖音爬取，指定日期   
+python main.py --deep-sentiment --platforms dy --date 2025-11-17 --test
 # 用抖音APP扫码登录
 ```
 

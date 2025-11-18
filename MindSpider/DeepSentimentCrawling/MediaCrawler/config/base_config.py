@@ -9,11 +9,10 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # 基础配置
-PLATFORM = "ks"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
-KEYWORDS = "阿里巴巴,股价”"  # 关键词搜索配置，以英文逗号分隔
+PLATFORM = "dy"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+KEYWORDS = "阿里巴巴,股价"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""
-CRAWLER_TYPE = "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)
 
 # 是否开启 IP 代理
 ENABLE_IP_PROXY = False
@@ -28,7 +27,7 @@ IP_PROXY_PROVIDER_NAME = "kuaidaili"  # kuaidaili | wandouhttp
 # 设置False会打开一个浏览器
 # 小红书如果一直扫码登录不通过，打开浏览器手动过一下滑动验证码
 # 抖音如果一直提示失败，打开浏览器看下是否扫码登录之后出现了手机号验证，如果出现了手动过一下再试。
-HEADLESS = True
+HEADLESS = False  # 运行模式由配置或 MEDIACRAWLER_HEADLESS 控制
 
 # 是否保存登录状态
 SAVE_LOGIN_STATE = True
@@ -114,3 +113,4 @@ from .ks_config import *
 from .weibo_config import *
 from .tieba_config import *
 from .zhihu_config import *
+CRAWLER_TYPE = "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)

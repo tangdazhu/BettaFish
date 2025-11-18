@@ -6,6 +6,7 @@ DeepSentimentCrawling模块 - 平台爬虫管理器
 """
 
 import os
+import re
 import sys
 import subprocess
 import tempfile
@@ -87,47 +88,85 @@ class PlatformCrawler:
             base_config_path = self.mediacrawler_path / "config" / "base_config.py"
 
             # 将关键词列表转换为逗号分隔的字符串
-            keywords_str = ",".join(keywords)
+            sanitized_keywords = [
+                kw.replace('"', "").replace("'", "").strip() for kw in keywords
+            ]
+            keywords_str = ",".join(sanitized_keywords)
 
             # 读取原始配置文件
             with open(base_config_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # 修改关键配置项
-            lines = content.split("\n")
-            new_lines = []
+            # 把旧的多行 CRAWLER_TYPE 块清理掉，避免残留缩进
+            content = re.sub(
+                r"^CRAWLER_TYPE\s*=\s*\(\s*\r?\n.*?^\)\s*$",
+                "",
+                content,
+                flags=re.MULTILINE | re.DOTALL,
+            )
 
-            for line in lines:
-                if line.startswith("PLATFORM = "):
-                    new_lines.append(
-                        f'PLATFORM = "{platform}"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu'
-                    )
-                elif line.startswith("KEYWORDS = "):
-                    new_lines.append(
-                        f'KEYWORDS = "{keywords_str}"  # 关键词搜索配置，以英文逗号分隔'
-                    )
-                elif line.startswith("CRAWLER_TYPE = "):
-                    new_lines.append(
-                        f'CRAWLER_TYPE = "{crawler_type}"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)'
-                    )
-                elif line.startswith("SAVE_DATA_OPTION = "):
-                    new_lines.append(
-                        f'SAVE_DATA_OPTION = "{save_data_option}"  # csv or db or json or sqlite or postgresql'
-                    )
-                elif line.startswith("CRAWLER_MAX_NOTES_COUNT = "):
-                    new_lines.append(f"CRAWLER_MAX_NOTES_COUNT = {max_notes}")
-                elif line.startswith("ENABLE_GET_COMMENTS = "):
-                    new_lines.append("ENABLE_GET_COMMENTS = True")
-                elif line.startswith("CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = "):
-                    new_lines.append("CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20")
-                elif line.startswith("HEADLESS = "):
-                    new_lines.append("HEADLESS = True")  # 使用无头模式
+            def replace_or_append(pattern: str, replacement: str) -> None:
+                nonlocal content
+                if re.search(pattern, content, flags=re.MULTILINE):
+                    content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
                 else:
-                    new_lines.append(line)
+                    if not content.endswith("\n"):
+                        content += "\n"
+                    content += replacement
+
+            replace_or_append(
+                r"^PLATFORM\s*=.*$",
+                f'PLATFORM = "{platform}"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu',
+            )
+            replace_or_append(
+                r"^KEYWORDS\s*=.*$",
+                f'KEYWORDS = "{keywords_str}"  # 关键词搜索配置，以英文逗号分隔',
+            )
+            replace_or_append(
+                r"^CRAWLER_TYPE\s*=.*$",
+                f'CRAWLER_TYPE = "{crawler_type}"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)',
+            )
+            replace_or_append(
+                r"^SAVE_DATA_OPTION\s*=.*$",
+                f'SAVE_DATA_OPTION = "{save_data_option}"  # csv or db or json or sqlite or postgresql',
+            )
+            replace_or_append(
+                r"^CRAWLER_MAX_NOTES_COUNT\s*=.*$",
+                f"CRAWLER_MAX_NOTES_COUNT = {max_notes}",
+            )
+            replace_or_append(
+                r"^ENABLE_GET_COMMENTS\s*=.*$",
+                "ENABLE_GET_COMMENTS = True",
+            )
+            replace_or_append(
+                r"^CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES\s*=.*$",
+                "CRAWLER_MAX_COMMENTS_COUNT_SINGLENOTES = 20",
+            )
+
+            # HEADLESS 支持 .env 开关，默认为配置文件原值
+            headless_match = re.search(
+                r"^HEADLESS\s*=\s*(True|False)", content, flags=re.MULTILINE
+            )
+            existing_headless_value = (
+                headless_match.group(1) if headless_match else "True"
+            )
+            headless_env = os.getenv("MEDIACRAWLER_HEADLESS")
+            if headless_env is not None:
+                env_lower = headless_env.strip().lower()
+                new_headless_value = (
+                    "True" if env_lower in ("1", "true", "yes", "on") else "False"
+                )
+            else:
+                new_headless_value = existing_headless_value
+
+            replace_or_append(
+                r"^HEADLESS\s*=.*$",
+                f"HEADLESS = {new_headless_value}  # 运行模式由配置或 MEDIACRAWLER_HEADLESS 控制",
+            )
 
             # 写入新配置
             with open(base_config_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(new_lines))
+                f.write(content)
 
             logger.info(
                 f"已配置 {platform} 平台，爬取类型: {crawler_type}，关键词数量: {len(keywords)}，最大爬取数量: {max_notes}，保存数据方式: {save_data_option}"
