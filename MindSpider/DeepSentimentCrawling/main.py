@@ -18,42 +18,7 @@ sys.path.append(str(project_root))
 
 from keyword_manager import KeywordManager
 from platform_crawler import PlatformCrawler
-
-# 平台名称映射
-PLATFORM_NAME_MAP = {
-    "xhs": "xiaohongshu",
-    "dy": "douyin",
-    "ks": "kuaishou",
-    "bili": "bilibili",
-    "wb": "weibo",
-    "tieba": "tieba",
-    "zhihu": "zhihu",
-}
-
-
-def setup_platform_logger(platform: str):
-    """为指定平台设置日志文件"""
-    logs_dir = project_root / "logs"
-    logs_dir.mkdir(exist_ok=True)
-
-    platform_name = PLATFORM_NAME_MAP.get(platform, platform)
-    log_file = logs_dir / f"{platform_name}.log"
-
-    # 添加文件日志处理器
-    logger.add(
-        log_file,
-        rotation="10 MB",  # 日志文件超过10MB时轮转
-        retention="7 days",  # 保留最近7天的日志
-        compression="zip",  # 压缩旧日志
-        encoding="utf-8",
-        level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
-    )
-
-    logger.info(f"=" * 60)
-    logger.info(f"平台 {platform} ({platform_name}) 的日志已启用")
-    logger.info(f"日志文件: {log_file}")
-    logger.info(f"=" * 60)
+from platforms_config import SUPPORTED_PLATFORMS
 
 
 class DeepSentimentCrawling:
@@ -63,7 +28,7 @@ class DeepSentimentCrawling:
         """初始化深度情感爬取"""
         self.keyword_manager = KeywordManager()
         self.platform_crawler = PlatformCrawler()
-        self.supported_platforms = ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]
+        self.supported_platforms = SUPPORTED_PLATFORMS
 
     def run_daily_crawling(
         self,
@@ -291,13 +256,6 @@ def main():
     parser.add_argument("--test", action="store_true", help="测试模式 (少量数据)")
 
     args = parser.parse_args()
-
-    # 为指定平台设置日志
-    if args.platform:
-        setup_platform_logger(args.platform)
-    elif args.platforms:
-        for platform in args.platforms:
-            setup_platform_logger(platform)
 
     # 解析日期
     target_date = None

@@ -9,7 +9,7 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # 基础配置
-PLATFORM = "dy"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+PLATFORM = "zhihu"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
 KEYWORDS = "阿里巴巴,股价"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 COOKIES = ""

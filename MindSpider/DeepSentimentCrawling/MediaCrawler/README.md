@@ -190,10 +190,10 @@ playwright install
 
 ```shell
 # 项目默认是没有开启评论爬取模式，如需评论请在 config/base_config.py 中的 ENABLE_GET_COMMENTS 变量修改
-# 一些其他支持项，也可以在 config/base_config.py 查看功能，写的有中文注释
+# 一些其他支持项，也可以在## 配置说明
 
-# 从配置文件中读取关键词搜索相关的帖子并爬取帖子信息与评论
-python main.py --platform xhs --lt qrcode --type search
+- `config/base_config.py`：运行爬虫前由 MindSpider 主程序自动重写，用于为当前平台写入关键词、登录方式、是否无头、保存方式等运行时参数。
+- `platforms_config.py`：MindSpider 主程序集中维护的支持平台列表；`DeepSentimentCrawling` 与 `platform_crawler` 都从该模块读取，确保统一。
 
 # 从配置文件中读取指定的帖子ID列表获取指定帖子的信息与评论信息
 python main.py --platform xhs --lt qrcode --type detail

@@ -20,15 +20,36 @@ echo OK - Conda environment activated
 echo.
 
 
-echo 1. 自动爬取所有平台数据
-echo.2.platforms_config.py中配置了爬取的平台
-echo.3. 日志文件在MindSpider\logs\目录下
-echo.
-python main.py --deep-sentiment --test --date 2025-11-17
+echo 1. 查看所有平台汇总统计
+python check_crawled_data.py
 echo.
 
-echo 2. 查看测试后收集的详细数据
-python check_crawled_data.py 
+echo 2. 查看B站详细数据
+python check_crawled_data.py --platform bili
+echo.
+
+echo 3. 查看微博详细数据
+python check_crawled_data.py --platform weibo
+echo.
+
+echo 4. 查看小红书详细数据
+python check_crawled_data.py --platform xhs
+echo.
+
+echo 5. 查看抖音详细数据
+python check_crawled_data.py --platform douyin
+echo.
+
+echo 6. 查看快手详细数据
+python check_crawled_data.py --platform kuaishou
+echo.
+
+echo 7. 查看贴吧详细数据
+python check_crawled_data.py --platform tieba
+echo.
+
+echo 8. 查看知乎详细数据
+python check_crawled_data.py --platform zhihu
 echo.
 
 echo ========================================

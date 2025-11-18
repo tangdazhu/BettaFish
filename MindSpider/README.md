@@ -364,9 +364,15 @@ python main.py --complete --test
 python main.py --broad-topic
 
 # 2. 运行爬虫（基于关键词爬取各平台内容）
+# 读取数据库中“今日（或 --date 指定）”的话题关键词；
+# 启动各平台爬虫（受 --platforms 控制，默认配置文件里启用的平台），抓取内容与评论；
+# 不会重新提取话题，也不会生成最终报告。
 python main.py --deep-sentiment --test
 
-# 或者一次性运行完整流程
+#一次性运行完整流程
+# 先跑 BroadTopicExtraction，从资讯源生成/更新当日 daily_topics；
+# 再自动调用 DeepSentimentCrawling（等同于前一个命令）；
+# 若配置了后续流程，还会触发 Report/Forum 等后续引擎（在 --test 模式下通常使用最小参数）。
 python main.py --complete --test
 ```
 

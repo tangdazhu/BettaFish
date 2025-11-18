@@ -25,6 +25,9 @@ try:
 except ImportError:
     raise ImportError("无法导入config.py配置文件")
 
+from platforms_config import SUPPORTED_PLATFORMS
+from logging_utils import setup_platform_logger
+
 
 class PlatformCrawler:
     """平台爬虫管理器"""
@@ -32,7 +35,7 @@ class PlatformCrawler:
     def __init__(self):
         """初始化平台爬虫管理器"""
         self.mediacrawler_path = Path(__file__).parent / "MediaCrawler"
-        self.supported_platforms = ["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"]
+        self.supported_platforms = SUPPORTED_PLATFORMS
         self.crawl_stats = {}
 
         # 确保MediaCrawler目录存在
@@ -202,6 +205,8 @@ class PlatformCrawler:
         if not keywords:
             raise ValueError("关键词列表不能为空")
 
+        handler_id = setup_platform_logger(platform)
+
         start_message = f"\n开始爬取平台: {platform}"
         start_message += f"\n关键词: {keywords[:5]}{'...' if len(keywords) > 5 else ''} (共{len(keywords)}个)"
         logger.info(start_message)
@@ -302,6 +307,8 @@ class PlatformCrawler:
         except Exception as e:
             logger.exception(f"❌ {platform} 爬取异常: {e}")
             return {"success": False, "error": str(e), "platform": platform}
+        finally:
+            logger.remove(handler_id)
 
     def _parse_crawl_output(
         self, output_lines: List[str], error_lines: List[str]
