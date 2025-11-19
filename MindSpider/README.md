@@ -563,7 +563,7 @@ python check_crawled_data.py --platform xhs
 **清空数据**：
 ```bash
 # 清空B站所有数据（需要确认）
-python check_crawled_data.py --platform bili --clear
+python check_crawled_data.py --platform bili --clear 
 
 # 清空包含特定关键词的数据
 python check_crawled_data.py --platform bili --clear --keyword "阿里巴巴"

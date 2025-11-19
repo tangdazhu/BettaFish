@@ -17,6 +17,7 @@
 import sys
 import argparse
 from pathlib import Path
+from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -30,64 +31,71 @@ from datetime import datetime
 PLATFORM_CONFIG = {
     "bili": {
         "name": "B站",
-        "video_table": "bilibili_video",
+        "content_table": "bilibili_video",
         "comment_table": "bilibili_video_comment",
         "id_field": "video_id",
         "title_field": "title",
+        "url_field": "video_url",
         "liked_field": "liked_count",
         "comment_count_field": "video_comment",
     },
     "weibo": {
         "name": "微博",
-        "video_table": "weibo_note",
+        "content_table": "weibo_note",
         "comment_table": "weibo_note_comment",
         "id_field": "note_id",
-        "title_field": "note_content",
+        "title_field": "content",
+        "url_field": "note_url",
         "liked_field": "liked_count",
         "comment_count_field": "comments_count",
     },
     "xhs": {
         "name": "小红书",
-        "video_table": "xhs_note",
+        "content_table": "xhs_note",
         "comment_table": "xhs_note_comment",
         "id_field": "note_id",
-        "title_field": "note_title",
+        "title_field": "title",
+        "url_field": "note_url",
         "liked_field": "liked_count",
-        "comment_count_field": "comments_count",
+        "comment_count_field": "comment_count",
     },
     "douyin": {
         "name": "抖音",
-        "video_table": "douyin_aweme",
+        "content_table": "douyin_aweme",
         "comment_table": "douyin_aweme_comment",
         "id_field": "aweme_id",
-        "title_field": "aweme_title",
+        "title_field": "title",
+        "url_field": "aweme_url",
         "liked_field": "liked_count",
-        "comment_count_field": "comments_count",
+        "comment_count_field": "comment_count",
     },
     "kuaishou": {
         "name": "快手",
-        "video_table": "kuaishou_video",
+        "content_table": "kuaishou_video",
         "comment_table": "kuaishou_video_comment",
         "id_field": "video_id",
-        "title_field": "video_title",
+        "title_field": "title",
+        "url_field": "video_url",
         "liked_field": "liked_count",
         "comment_count_field": "comments_count",
     },
     "tieba": {
         "name": "贴吧",
-        "video_table": "tieba_note",
+        "content_table": "tieba_note",
         "comment_table": "tieba_comment",
         "id_field": "note_id",
         "title_field": "title",
-        "liked_field": "liked_count",
-        "comment_count_field": "comments_count",
+        "url_field": "note_url",
+        "liked_field": "total_replay_num",
+        "comment_count_field": "total_replay_num",
     },
     "zhihu": {
         "name": "知乎",
-        "video_table": "zhihu_content",
+        "content_table": "zhihu_content",
         "comment_table": "zhihu_comment",
         "id_field": "content_id",
         "title_field": "title",
+        "url_field": "content_url",
         "liked_field": "voteup_count",
         "comment_count_field": "comment_count",
     },
@@ -115,7 +123,7 @@ def check_all_platforms():
 
         for platform_key, config in PLATFORM_CONFIG.items():
             # 检查内容数量
-            cursor.execute(f"SELECT COUNT(*) FROM {config['video_table']}")
+            cursor.execute(f"SELECT COUNT(*) FROM {config['content_table']}")
             content_count = cursor.fetchone()[0]
 
             # 检查评论数量
@@ -183,7 +191,7 @@ def check_platform_data(platform_key):
                 f"""
                 SELECT {config['id_field']}, {config['title_field']}, 
                        {config['liked_field']}, {config['comment_count_field']}
-                FROM {config['video_table']}
+                FROM {config['content_table']}
                 ORDER BY add_ts DESC 
                 LIMIT 5
             """
@@ -240,7 +248,7 @@ def check_platform_data(platform_key):
         cursor.execute(
             f"""
             SELECT {config['id_field']}, {config['title_field']}
-            FROM {config['video_table']}
+            FROM {config['content_table']}
         """
         )
         videos = cursor.fetchall()
@@ -282,124 +290,111 @@ def check_platform_data(platform_key):
         print(f"检查失败: {e}")
 
 
-def clear_bilibili_data(keyword=None):
-    """
-    清空B站爬取的数据
+def _connect_db():
+    return psycopg2.connect(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        dbname=settings.DB_NAME,
+    )
 
-    Args:
-        keyword: 可选，指定关键词只清空包含该关键词的数据
-    """
+
+def _fetch_ids_by_keyword(cursor, *, config: Dict, keyword: str) -> List[str]:
+    cursor.execute(
+        f"""
+        SELECT {config['id_field']} FROM {config['content_table']}
+        WHERE {config['title_field']} LIKE %s
+           OR {config['url_field']} LIKE %s
+           OR COALESCE(source_keyword, '') LIKE %s
+        """,
+        (f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
+def _delete_by_ids(cursor, *, config: Dict, ids: List[str]) -> Dict[str, int]:
+    cursor.execute(
+        f"DELETE FROM {config['comment_table']} WHERE {config['id_field']} = ANY(%s)",
+        (ids,),
+    )
+    comment_deleted = cursor.rowcount
+    cursor.execute(
+        f"DELETE FROM {config['content_table']} WHERE {config['id_field']} = ANY(%s)",
+        (ids,),
+    )
+    content_deleted = cursor.rowcount
+    return {"content": content_deleted, "comment": comment_deleted}
+
+
+def clear_platform_data(platform_key: str, keyword: Optional[str]) -> None:
+    config = PLATFORM_CONFIG[platform_key]
     try:
-        # 连接数据库
-        conn = psycopg2.connect(
-            host=settings.DB_HOST,
-            port=settings.DB_PORT,
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD,
-            dbname=settings.DB_NAME,
-        )
+        conn = _connect_db()
         cursor = conn.cursor()
 
         if keyword:
-            # 清空包含特定关键词的数据
-            print(f"\n正在清空包含关键词 '{keyword}' 的数据...")
-
-            # 先获取要删除的视频ID
-            cursor.execute(
-                """
-                SELECT video_id FROM bilibili_video 
-                WHERE title LIKE %s OR note_url LIKE %s
-                """,
-                (f"%{keyword}%", f"%{keyword}%"),
-            )
-            video_ids = [row[0] for row in cursor.fetchall()]
-
-            if not video_ids:
-                print(f"未找到包含关键词 '{keyword}' 的数据")
+            print(f"\n[{config['name']}] 正在清空包含关键词 '{keyword}' 的数据...")
+            ids = _fetch_ids_by_keyword(cursor, config=config, keyword=keyword)
+            if not ids:
+                print(f"[{config['name']}] 未找到包含关键词 '{keyword}' 的数据")
                 cursor.close()
                 conn.close()
                 return
-
-            print(f"找到 {len(video_ids)} 条相关视频")
-
-            # 确认删除
-            confirm = input(f"确认删除这 {len(video_ids)} 条视频及其评论吗？(yes/no): ")
+            print(f"[{config['name']}] 找到 {len(ids)} 条相关内容")
+            confirm = input(
+                f"确认删除 {config['name']} 中这 {len(ids)} 条内容及其评论吗？(yes/no): "
+            )
             if confirm.lower() != "yes":
-                print("已取消删除操作")
+                print(f"[{config['name']}] 已取消删除操作")
                 cursor.close()
                 conn.close()
                 return
-
-            # 删除评论
-            cursor.execute(
-                """
-                DELETE FROM bilibili_video_comment 
-                WHERE video_id = ANY(%s)
-                """,
-                (video_ids,),
-            )
-            comment_deleted = cursor.rowcount
-
-            # 删除视频
-            cursor.execute(
-                """
-                DELETE FROM bilibili_video 
-                WHERE video_id = ANY(%s)
-                """,
-                (video_ids,),
-            )
-            video_deleted = cursor.rowcount
-
+            delete_stats = _delete_by_ids(cursor, config=config, ids=ids)
             conn.commit()
-            print(f"\n删除成功!")
-            print(f"- 删除视频: {video_deleted} 条")
-            print(f"- 删除评论: {comment_deleted} 条")
-
+            print(
+                f"[{config['name']}] 删除成功: 内容 {delete_stats['content']} 条, 评论 {delete_stats['comment']} 条"
+            )
         else:
-            # 清空所有B站数据
-            print("\n警告: 即将清空所有B站数据!")
-
-            # 先统计数量
-            cursor.execute("SELECT COUNT(*) FROM bilibili_video")
-            video_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM bilibili_video_comment")
+            cursor.execute(f"SELECT COUNT(*) FROM {config['content_table']}")
+            content_count = cursor.fetchone()[0]
+            cursor.execute(f"SELECT COUNT(*) FROM {config['comment_table']}")
             comment_count = cursor.fetchone()[0]
-
-            if video_count == 0 and comment_count == 0:
-                print("数据库中没有B站数据")
+            if content_count == 0 and comment_count == 0:
+                print(f"[{config['name']}] 数据库中没有内容")
                 cursor.close()
                 conn.close()
                 return
-
-            print(f"当前数据: {video_count} 条视频, {comment_count} 条评论")
-            confirm = input("确认清空所有B站数据吗？(yes/no): ")
-
+            print(
+                f"[{config['name']}] 当前有 {content_count} 条内容, {comment_count} 条评论，确认清空吗？"
+            )
+            confirm = input("请再次确认 (yes/no): ")
             if confirm.lower() != "yes":
-                print("已取消清空操作")
+                print(f"[{config['name']}] 已取消清空操作")
                 cursor.close()
                 conn.close()
                 return
-
-            # 清空评论表
-            cursor.execute("DELETE FROM bilibili_video_comment")
+            cursor.execute(f"DELETE FROM {config['comment_table']}")
             comment_deleted = cursor.rowcount
-
-            # 清空视频表
-            cursor.execute("DELETE FROM bilibili_video")
-            video_deleted = cursor.rowcount
-
+            cursor.execute(f"DELETE FROM {config['content_table']}")
+            content_deleted = cursor.rowcount
             conn.commit()
-            print(f"\n清空成功!")
-            print(f"- 删除视频: {video_deleted} 条")
-            print(f"- 删除评论: {comment_deleted} 条")
+            print(
+                f"[{config['name']}] 清空成功: 内容 {content_deleted} 条, 评论 {comment_deleted} 条"
+            )
 
         cursor.close()
         conn.close()
-
-    except Exception as e:
-        print(f"清空失败: {e}")
-        if conn:
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{config['name']}] 清空失败: {exc}")
+        if "conn" in locals():
             conn.rollback()
+
+
+def clear_data(platform: Optional[str], keyword: Optional[str]) -> None:
+    targets = [platform] if platform else list(PLATFORM_CONFIG.keys())
+    for platform_key in targets:
+        clear_platform_data(platform_key, keyword)
 
 
 def main():
@@ -446,12 +441,7 @@ def main():
     args = parser.parse_args()
 
     if args.clear:
-        # 清空数据（目前只支持B站）
-        if args.platform and args.platform != "bili":
-            print(f"暂不支持清空{PLATFORM_CONFIG[args.platform]['name']}数据")
-            print("目前只支持清空B站数据")
-            return
-        clear_bilibili_data(keyword=args.keyword)
+        clear_data(platform=args.platform, keyword=args.keyword)
     else:
         if args.keyword:
             print("提示: --keyword 参数需要配合 --clear 使用")
