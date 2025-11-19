@@ -26,6 +26,7 @@ from playwright.async_api import BrowserContext, Page
 
 import config
 from tools import utils
+from tools.http_retry import request_with_retry
 
 from .exception import DataFetchError
 from .field import SearchType
@@ -52,8 +53,21 @@ class WeiboClient:
 
     async def request(self, method, url, **kwargs) -> Union[Response, Dict]:
         enable_return_response = kwargs.pop("return_response", False)
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        async def _send():
+            async with httpx.AsyncClient(proxy=self.proxy) as client:
+                return await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        try:
+            response = await request_with_retry(
+                _send,
+                max_attempts=config.HTTP_RETRY_MAX_ATTEMPTS,
+                base_delay=config.HTTP_RETRY_BASE_DELAY,
+                jitter=config.HTTP_RETRY_JITTER,
+                log_prefix="[WeiboClient.request]",
+            )
+        except httpx.HTTPError as exc:
+            raise DataFetchError(f"HTTP请求失败: {exc}") from exc
 
         if enable_return_response:
             return response

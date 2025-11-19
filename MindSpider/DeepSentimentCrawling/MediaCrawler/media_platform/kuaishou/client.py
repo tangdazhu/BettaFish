@@ -21,6 +21,7 @@ from playwright.async_api import BrowserContext, Page
 import config
 from base.base_crawler import AbstractApiClient
 from tools import utils
+from tools.http_retry import request_with_retry
 
 from .exception import DataFetchError
 from .graphql import KuaiShouGraphQL
@@ -45,8 +46,20 @@ class KuaiShouClient(AbstractApiClient):
         self.graphql = KuaiShouGraphQL()
 
     async def request(self, method, url, **kwargs) -> Any:
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request(method, url, timeout=self.timeout, **kwargs)
+        async def _send():
+            async with httpx.AsyncClient(proxy=self.proxy) as client:
+                return await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        try:
+            response = await request_with_retry(
+                _send,
+                max_attempts=config.HTTP_RETRY_MAX_ATTEMPTS,
+                base_delay=config.HTTP_RETRY_BASE_DELAY,
+                jitter=config.HTTP_RETRY_JITTER,
+                log_prefix="[KuaiShouClient.request]",
+            )
+        except httpx.HTTPError as exc:
+            raise DataFetchError(f"HTTP请求失败: {exc}") from exc
         data: Dict = response.json()
         if data.get("errors"):
             raise DataFetchError(data.get("errors", "unkonw error"))

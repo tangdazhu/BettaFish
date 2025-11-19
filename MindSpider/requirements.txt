@@ -28,6 +28,7 @@ regex
 tqdm
 python-dateutil
 pytz
+openai>=1.3.0
 
 # ===============================
 # MediaCrawler爬虫依赖

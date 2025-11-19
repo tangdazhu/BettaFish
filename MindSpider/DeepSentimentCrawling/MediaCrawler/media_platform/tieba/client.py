@@ -15,13 +15,13 @@ from urllib.parse import urlencode, quote
 
 import requests
 from playwright.async_api import BrowserContext, Page
-from tenacity import RetryError, retry, stop_after_attempt, wait_fixed
 
 import config
 from base.base_crawler import AbstractApiClient
 from model.m_baidu_tieba import TiebaComment, TiebaCreator, TiebaNote
 from proxy.proxy_ip_pool import ProxyIpPool
 from tools import utils
+from tools.http_retry import request_with_retry
 
 from .field import SearchNoteType, SearchSortType
 from .help import TieBaExtractor
@@ -76,12 +76,13 @@ class BaiduTieBaClient(AbstractApiClient):
             headers=self.headers,
             proxies=proxies,
             timeout=self.timeout,
-            **kwargs
+            **kwargs,
         )
         return response
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
-    async def request(self, method, url, return_ori_content=False, proxy=None, **kwargs) -> Union[str, Any]:
+    async def request(
+        self, method, url, return_ori_content=False, proxy=None, **kwargs
+    ) -> Union[str, Any]:
         """
         封装requests的公共请求方法，对请求响应做一些处理
         Args:
@@ -96,22 +97,51 @@ class BaiduTieBaClient(AbstractApiClient):
         """
         actual_proxy = proxy if proxy else self.default_ip_proxy
 
-        # 在线程池中执行同步的requests请求
-        response = await asyncio.to_thread(
-            self._sync_request,
-            method,
-            url,
-            actual_proxy,
-            **kwargs
-        )
+        async def _send(selected_proxy):
+            return await asyncio.to_thread(
+                self._sync_request,
+                method,
+                url,
+                selected_proxy,
+                **kwargs,
+            )
+
+        async def _request_with_proxy(selected_proxy):
+            return await request_with_retry(
+                lambda: _send(selected_proxy),
+                max_attempts=config.HTTP_RETRY_MAX_ATTEMPTS,
+                base_delay=config.HTTP_RETRY_BASE_DELAY,
+                jitter=config.HTTP_RETRY_JITTER,
+                log_prefix="[BaiduTieBaClient.request]",
+                retry_exceptions=(requests.RequestException,),
+            )
+
+        try:
+            response = await _request_with_proxy(actual_proxy)
+        except requests.RequestException as exc:
+            if self.ip_pool:
+                proxy_model = await self.ip_pool.get_proxy()
+                _, new_proxy = utils.format_proxy_info(proxy_model)
+                self.default_ip_proxy = new_proxy
+                response = await _request_with_proxy(new_proxy)
+            else:
+                raise Exception(
+                    f"[BaiduTieBaClient.request] 请求失败且无可用代理: {exc}"
+                )
 
         if response.status_code != 200:
-            utils.logger.error(f"Request failed, method: {method}, url: {url}, status code: {response.status_code}")
+            utils.logger.error(
+                f"Request failed, method: {method}, url: {url}, status code: {response.status_code}"
+            )
             utils.logger.error(f"Request failed, response: {response.text}")
-            raise Exception(f"Request failed, method: {method}, url: {url}, status code: {response.status_code}")
+            raise Exception(
+                f"Request failed, method: {method}, url: {url}, status code: {response.status_code}"
+            )
 
         if response.text == "" or response.text == "blocked":
-            utils.logger.error(f"request params incorrect, response.text: {response.text}")
+            utils.logger.error(
+                f"request params incorrect, response.text: {response.text}"
+            )
             raise Exception("account blocked")
 
         if return_ori_content:
@@ -119,7 +149,9 @@ class BaiduTieBaClient(AbstractApiClient):
 
         return response.json()
 
-    async def get(self, uri: str, params=None, return_ori_content=False, **kwargs) -> Any:
+    async def get(
+        self, uri: str, params=None, return_ori_content=False, **kwargs
+    ) -> Any:
         """
         GET请求，对请求头签名
         Args:
@@ -132,21 +164,14 @@ class BaiduTieBaClient(AbstractApiClient):
         """
         final_uri = uri
         if isinstance(params, dict):
-            final_uri = (f"{uri}?"
-                         f"{urlencode(params)}")
-        try:
-            res = await self.request(method="GET", url=f"{self._host}{final_uri}", return_ori_content=return_ori_content, **kwargs)
-            return res
-        except RetryError as e:
-            if self.ip_pool:
-                proxie_model = await self.ip_pool.get_proxy()
-                _, proxy = utils.format_proxy_info(proxie_model)
-                res = await self.request(method="GET", url=f"{self._host}{final_uri}", return_ori_content=return_ori_content, proxy=proxy, **kwargs)
-                self.default_ip_proxy = proxy
-                return res
-
-            utils.logger.error(f"[BaiduTieBaClient.get] 达到了最大重试次数，IP已经被Block，请尝试更换新的IP代理: {e}")
-            raise Exception(f"[BaiduTieBaClient.get] 达到了最大重试次数，IP已经被Block，请尝试更换新的IP代理: {e}")
+            final_uri = f"{uri}?" f"{urlencode(params)}"
+        res = await self.request(
+            method="GET",
+            url=f"{self._host}{final_uri}",
+            return_ori_content=return_ori_content,
+            **kwargs,
+        )
+        return res
 
     async def post(self, uri: str, data: dict, **kwargs) -> Dict:
         """
@@ -158,8 +183,10 @@ class BaiduTieBaClient(AbstractApiClient):
         Returns:
 
         """
-        json_str = json.dumps(data, separators=(',', ':'), ensure_ascii=False)
-        return await self.request(method="POST", url=f"{self._host}{uri}", data=json_str, **kwargs)
+        json_str = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
+        return await self.request(
+            method="POST", url=f"{self._host}{uri}", data=json_str, **kwargs
+        )
 
     async def pong(self, browser_context: BrowserContext = None) -> bool:
         """
@@ -171,10 +198,14 @@ class BaiduTieBaClient(AbstractApiClient):
         Returns:
             bool: True表示已登录,False表示未登录
         """
-        utils.logger.info("[BaiduTieBaClient.pong] Begin to check tieba login state by cookies...")
+        utils.logger.info(
+            "[BaiduTieBaClient.pong] Begin to check tieba login state by cookies..."
+        )
 
         if not browser_context:
-            utils.logger.warning("[BaiduTieBaClient.pong] browser_context is None, assume not logged in")
+            utils.logger.warning(
+                "[BaiduTieBaClient.pong] browser_context is None, assume not logged in"
+            )
             return False
 
         try:
@@ -187,14 +218,20 @@ class BaiduTieBaClient(AbstractApiClient):
             bduss = cookie_dict.get("BDUSS")  # 百度通用登录cookie
 
             if stoken or ptoken or bduss:
-                utils.logger.info(f"[BaiduTieBaClient.pong] Login state verified by cookies (STOKEN: {bool(stoken)}, PTOKEN: {bool(ptoken)}, BDUSS: {bool(bduss)})")
+                utils.logger.info(
+                    f"[BaiduTieBaClient.pong] Login state verified by cookies (STOKEN: {bool(stoken)}, PTOKEN: {bool(ptoken)}, BDUSS: {bool(bduss)})"
+                )
                 return True
             else:
-                utils.logger.info("[BaiduTieBaClient.pong] No valid login cookies found, need to login")
+                utils.logger.info(
+                    "[BaiduTieBaClient.pong] No valid login cookies found, need to login"
+                )
                 return False
 
         except Exception as e:
-            utils.logger.error(f"[BaiduTieBaClient.pong] Check login state failed: {e}, assume not logged in")
+            utils.logger.error(
+                f"[BaiduTieBaClient.pong] Check login state failed: {e}, assume not logged in"
+            )
             return False
 
     async def update_cookies(self, browser_context: BrowserContext):
@@ -230,7 +267,9 @@ class BaiduTieBaClient(AbstractApiClient):
 
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_notes_by_keyword] playwright_page is None, cannot use browser mode")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_notes_by_keyword] playwright_page is None, cannot use browser mode"
+            )
             raise Exception("playwright_page is required for browser-based search")
 
         # 构造搜索URL
@@ -247,7 +286,9 @@ class BaiduTieBaClient(AbstractApiClient):
 
         # 拼接完整URL
         full_url = f"{search_url}?{urlencode(params)}"
-        utils.logger.info(f"[BaiduTieBaClient.get_notes_by_keyword] 访问搜索页面: {full_url}")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_notes_by_keyword] 访问搜索页面: {full_url}"
+        )
 
         try:
             # 使用Playwright访问搜索页面
@@ -258,11 +299,15 @@ class BaiduTieBaClient(AbstractApiClient):
 
             # 获取页面HTML内容
             page_content = await self.playwright_page.content()
-            utils.logger.info(f"[BaiduTieBaClient.get_notes_by_keyword] 成功获取搜索页面HTML,长度: {len(page_content)}")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_notes_by_keyword] 成功获取搜索页面HTML,长度: {len(page_content)}"
+            )
 
             # 提取搜索结果
             notes = self._page_extractor.extract_search_note_list(page_content)
-            utils.logger.info(f"[BaiduTieBaClient.get_notes_by_keyword] 提取到 {len(notes)} 条帖子")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_notes_by_keyword] 提取到 {len(notes)} 条帖子"
+            )
             return notes
 
         except Exception as e:
@@ -279,12 +324,18 @@ class BaiduTieBaClient(AbstractApiClient):
             TiebaNote: 帖子详情对象
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_note_by_id] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based note detail fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_note_by_id] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based note detail fetching"
+            )
 
         # 构造帖子详情URL
         note_url = f"{self._host}/p/{note_id}"
-        utils.logger.info(f"[BaiduTieBaClient.get_note_by_id] 访问帖子详情页面: {note_url}")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_note_by_id] 访问帖子详情页面: {note_url}"
+        )
 
         try:
             # 使用Playwright访问帖子详情页面
@@ -295,14 +346,18 @@ class BaiduTieBaClient(AbstractApiClient):
 
             # 获取页面HTML内容
             page_content = await self.playwright_page.content()
-            utils.logger.info(f"[BaiduTieBaClient.get_note_by_id] 成功获取帖子详情HTML,长度: {len(page_content)}")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_note_by_id] 成功获取帖子详情HTML,长度: {len(page_content)}"
+            )
 
             # 提取帖子详情
             note_detail = self._page_extractor.extract_note_detail(page_content)
             return note_detail
 
         except Exception as e:
-            utils.logger.error(f"[BaiduTieBaClient.get_note_by_id] 获取帖子详情失败: {e}")
+            utils.logger.error(
+                f"[BaiduTieBaClient.get_note_by_id] 获取帖子详情失败: {e}"
+            )
             raise
 
     async def get_note_all_comments(
@@ -323,8 +378,12 @@ class BaiduTieBaClient(AbstractApiClient):
             List[TiebaComment]: 评论列表
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_note_all_comments] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based comment fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_note_all_comments] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based comment fetching"
+            )
 
         result: List[TiebaComment] = []
         current_page = 1
@@ -332,11 +391,15 @@ class BaiduTieBaClient(AbstractApiClient):
         while note_detail.total_replay_page >= current_page and len(result) < max_count:
             # 构造评论页URL
             comment_url = f"{self._host}/p/{note_detail.note_id}?pn={current_page}"
-            utils.logger.info(f"[BaiduTieBaClient.get_note_all_comments] 访问评论页面: {comment_url}")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_note_all_comments] 访问评论页面: {comment_url}"
+            )
 
             try:
                 # 使用Playwright访问评论页面
-                await self.playwright_page.goto(comment_url, wait_until="domcontentloaded")
+                await self.playwright_page.goto(
+                    comment_url, wait_until="domcontentloaded"
+                )
 
                 # 等待页面加载,使用配置文件中的延时设置
                 await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
@@ -350,12 +413,14 @@ class BaiduTieBaClient(AbstractApiClient):
                 )
 
                 if not comments:
-                    utils.logger.info(f"[BaiduTieBaClient.get_note_all_comments] 第{current_page}页没有评论,停止爬取")
+                    utils.logger.info(
+                        f"[BaiduTieBaClient.get_note_all_comments] 第{current_page}页没有评论,停止爬取"
+                    )
                     break
 
                 # 限制评论数量
                 if len(result) + len(comments) > max_count:
-                    comments = comments[:max_count - len(result)]
+                    comments = comments[: max_count - len(result)]
 
                 if callback:
                     await callback(note_detail.note_id, comments)
@@ -371,10 +436,14 @@ class BaiduTieBaClient(AbstractApiClient):
                 current_page += 1
 
             except Exception as e:
-                utils.logger.error(f"[BaiduTieBaClient.get_note_all_comments] 获取第{current_page}页评论失败: {e}")
+                utils.logger.error(
+                    f"[BaiduTieBaClient.get_note_all_comments] 获取第{current_page}页评论失败: {e}"
+                )
                 break
 
-        utils.logger.info(f"[BaiduTieBaClient.get_note_all_comments] 共获取 {len(result)} 条一级评论")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_note_all_comments] 共获取 {len(result)} 条一级评论"
+        )
         return result
 
     async def get_comments_all_sub_comments(
@@ -397,8 +466,12 @@ class BaiduTieBaClient(AbstractApiClient):
             return []
 
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_comments_all_sub_comments] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based sub-comment fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_comments_all_sub_comments] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based sub-comment fetching"
+            )
 
         all_sub_comments: List[TiebaComment] = []
 
@@ -418,11 +491,15 @@ class BaiduTieBaClient(AbstractApiClient):
                     f"fid={parment_comment.tieba_id}&"
                     f"pn={current_page}"
                 )
-                utils.logger.info(f"[BaiduTieBaClient.get_comments_all_sub_comments] 访问子评论页面: {sub_comment_url}")
+                utils.logger.info(
+                    f"[BaiduTieBaClient.get_comments_all_sub_comments] 访问子评论页面: {sub_comment_url}"
+                )
 
                 try:
                     # 使用Playwright访问子评论页面
-                    await self.playwright_page.goto(sub_comment_url, wait_until="domcontentloaded")
+                    await self.playwright_page.goto(
+                        sub_comment_url, wait_until="domcontentloaded"
+                    )
 
                     # 等待页面加载,使用配置文件中的延时设置
                     await asyncio.sleep(config.CRAWLER_MAX_SLEEP_SEC)
@@ -456,10 +533,14 @@ class BaiduTieBaClient(AbstractApiClient):
                     )
                     break
 
-        utils.logger.info(f"[BaiduTieBaClient.get_comments_all_sub_comments] 共获取 {len(all_sub_comments)} 条子评论")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_comments_all_sub_comments] 共获取 {len(all_sub_comments)} 条子评论"
+        )
         return all_sub_comments
 
-    async def get_notes_by_tieba_name(self, tieba_name: str, page_num: int) -> List[TiebaNote]:
+    async def get_notes_by_tieba_name(
+        self, tieba_name: str, page_num: int
+    ) -> List[TiebaNote]:
         """
         根据贴吧名称获取帖子列表 (使用Playwright访问页面,避免API检测)
         Args:
@@ -470,12 +551,18 @@ class BaiduTieBaClient(AbstractApiClient):
             List[TiebaNote]: 帖子列表
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_notes_by_tieba_name] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based tieba note fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_notes_by_tieba_name] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based tieba note fetching"
+            )
 
         # 构造贴吧帖子列表URL
         tieba_url = f"{self._host}/f?kw={quote(tieba_name)}&pn={page_num}"
-        utils.logger.info(f"[BaiduTieBaClient.get_notes_by_tieba_name] 访问贴吧页面: {tieba_url}")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_notes_by_tieba_name] 访问贴吧页面: {tieba_url}"
+        )
 
         try:
             # 使用Playwright访问贴吧页面
@@ -486,15 +573,21 @@ class BaiduTieBaClient(AbstractApiClient):
 
             # 获取页面HTML内容
             page_content = await self.playwright_page.content()
-            utils.logger.info(f"[BaiduTieBaClient.get_notes_by_tieba_name] 成功获取贴吧页面HTML,长度: {len(page_content)}")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_notes_by_tieba_name] 成功获取贴吧页面HTML,长度: {len(page_content)}"
+            )
 
             # 提取帖子列表
             notes = self._page_extractor.extract_tieba_note_list(page_content)
-            utils.logger.info(f"[BaiduTieBaClient.get_notes_by_tieba_name] 提取到 {len(notes)} 条帖子")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_notes_by_tieba_name] 提取到 {len(notes)} 条帖子"
+            )
             return notes
 
         except Exception as e:
-            utils.logger.error(f"[BaiduTieBaClient.get_notes_by_tieba_name] 获取贴吧帖子列表失败: {e}")
+            utils.logger.error(
+                f"[BaiduTieBaClient.get_notes_by_tieba_name] 获取贴吧帖子列表失败: {e}"
+            )
             raise
 
     async def get_creator_info_by_url(self, creator_url: str) -> str:
@@ -507,10 +600,16 @@ class BaiduTieBaClient(AbstractApiClient):
             str: 页面HTML内容
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_creator_info_by_url] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based creator info fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_creator_info_by_url] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based creator info fetching"
+            )
 
-        utils.logger.info(f"[BaiduTieBaClient.get_creator_info_by_url] 访问创作者主页: {creator_url}")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_creator_info_by_url] 访问创作者主页: {creator_url}"
+        )
 
         try:
             # 使用Playwright访问创作者主页
@@ -521,12 +620,16 @@ class BaiduTieBaClient(AbstractApiClient):
 
             # 获取页面HTML内容
             page_content = await self.playwright_page.content()
-            utils.logger.info(f"[BaiduTieBaClient.get_creator_info_by_url] 成功获取创作者主页HTML,长度: {len(page_content)}")
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_creator_info_by_url] 成功获取创作者主页HTML,长度: {len(page_content)}"
+            )
 
             return page_content
 
         except Exception as e:
-            utils.logger.error(f"[BaiduTieBaClient.get_creator_info_by_url] 获取创作者主页失败: {e}")
+            utils.logger.error(
+                f"[BaiduTieBaClient.get_creator_info_by_url] 获取创作者主页失败: {e}"
+            )
             raise
 
     async def get_notes_by_creator(self, user_name: str, page_number: int) -> Dict:
@@ -540,12 +643,18 @@ class BaiduTieBaClient(AbstractApiClient):
             Dict: 包含帖子数据的字典
         """
         if not self.playwright_page:
-            utils.logger.error("[BaiduTieBaClient.get_notes_by_creator] playwright_page is None, cannot use browser mode")
-            raise Exception("playwright_page is required for browser-based creator notes fetching")
+            utils.logger.error(
+                "[BaiduTieBaClient.get_notes_by_creator] playwright_page is None, cannot use browser mode"
+            )
+            raise Exception(
+                "playwright_page is required for browser-based creator notes fetching"
+            )
 
         # 构造创作者帖子列表URL
         creator_url = f"{self._host}/home/get/getthread?un={quote(user_name)}&pn={page_number}&id=utf-8&_={utils.get_current_timestamp()}"
-        utils.logger.info(f"[BaiduTieBaClient.get_notes_by_creator] 访问创作者帖子列表: {creator_url}")
+        utils.logger.info(
+            f"[BaiduTieBaClient.get_notes_by_creator] 访问创作者帖子列表: {creator_url}"
+        )
 
         try:
             # 使用Playwright访问创作者帖子列表页面
@@ -560,17 +669,27 @@ class BaiduTieBaClient(AbstractApiClient):
             # 提取JSON数据(页面会包含<pre>标签或直接是JSON)
             try:
                 # 尝试从页面中提取JSON
-                json_text = await self.playwright_page.evaluate("() => document.body.innerText")
+                json_text = await self.playwright_page.evaluate(
+                    "() => document.body.innerText"
+                )
                 result = json.loads(json_text)
-                utils.logger.info(f"[BaiduTieBaClient.get_notes_by_creator] 成功获取创作者帖子数据")
+                utils.logger.info(
+                    f"[BaiduTieBaClient.get_notes_by_creator] 成功获取创作者帖子数据"
+                )
                 return result
             except json.JSONDecodeError as e:
-                utils.logger.error(f"[BaiduTieBaClient.get_notes_by_creator] JSON解析失败: {e}")
-                utils.logger.error(f"[BaiduTieBaClient.get_notes_by_creator] 页面内容: {page_content[:500]}")
+                utils.logger.error(
+                    f"[BaiduTieBaClient.get_notes_by_creator] JSON解析失败: {e}"
+                )
+                utils.logger.error(
+                    f"[BaiduTieBaClient.get_notes_by_creator] 页面内容: {page_content[:500]}"
+                )
                 raise Exception(f"Failed to parse JSON from creator notes page: {e}")
 
         except Exception as e:
-            utils.logger.error(f"[BaiduTieBaClient.get_notes_by_creator] 获取创作者帖子列表失败: {e}")
+            utils.logger.error(
+                f"[BaiduTieBaClient.get_notes_by_creator] 获取创作者帖子列表失败: {e}"
+            )
             raise
 
     async def get_all_notes_by_creator_user_name(
@@ -596,9 +715,17 @@ class BaiduTieBaClient(AbstractApiClient):
         # 百度贴吧比较特殊一些，前10个帖子是直接展示在主页上的，要单独处理，通过API获取不到
         result: List[TiebaNote] = []
         if creator_page_html_content:
-            thread_id_list = (self._page_extractor.extract_tieba_thread_id_list_from_creator_page(creator_page_html_content))
-            utils.logger.info(f"[BaiduTieBaClient.get_all_notes_by_creator] got user_name:{user_name} thread_id_list len : {len(thread_id_list)}")
-            note_detail_task = [self.get_note_by_id(thread_id) for thread_id in thread_id_list]
+            thread_id_list = (
+                self._page_extractor.extract_tieba_thread_id_list_from_creator_page(
+                    creator_page_html_content
+                )
+            )
+            utils.logger.info(
+                f"[BaiduTieBaClient.get_all_notes_by_creator] got user_name:{user_name} thread_id_list len : {len(thread_id_list)}"
+            )
+            note_detail_task = [
+                self.get_note_by_id(thread_id) for thread_id in thread_id_list
+            ]
             notes = await asyncio.gather(*note_detail_task)
             if callback:
                 await callback(notes)
@@ -608,17 +735,25 @@ class BaiduTieBaClient(AbstractApiClient):
         page_number = 1
         page_per_count = 20
         total_get_count = 0
-        while notes_has_more == 1 and (max_note_count == 0 or total_get_count < max_note_count):
+        while notes_has_more == 1 and (
+            max_note_count == 0 or total_get_count < max_note_count
+        ):
             notes_res = await self.get_notes_by_creator(user_name, page_number)
             if not notes_res or notes_res.get("no") != 0:
-                utils.logger.error(f"[WeiboClient.get_notes_by_creator] got user_name:{user_name} notes failed, notes_res: {notes_res}")
+                utils.logger.error(
+                    f"[WeiboClient.get_notes_by_creator] got user_name:{user_name} notes failed, notes_res: {notes_res}"
+                )
                 break
             notes_data = notes_res.get("data")
             notes_has_more = notes_data.get("has_more")
             notes = notes_data["thread_list"]
-            utils.logger.info(f"[WeiboClient.get_all_notes_by_creator] got user_name:{user_name} notes len : {len(notes)}")
+            utils.logger.info(
+                f"[WeiboClient.get_all_notes_by_creator] got user_name:{user_name} notes len : {len(notes)}"
+            )
 
-            note_detail_task = [self.get_note_by_id(note['thread_id']) for note in notes]
+            note_detail_task = [
+                self.get_note_by_id(note["thread_id"]) for note in notes
+            ]
             notes = await asyncio.gather(*note_detail_task)
             if callback:
                 await callback(notes)

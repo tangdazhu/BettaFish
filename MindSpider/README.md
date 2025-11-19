@@ -379,7 +379,7 @@ python main.py --complete --test
 ### 单独使用模块
 
 ```bash
-# 只获取今日热点和关键词
+# 只获取今日热点和关键词，运行后会在 daily_topics 表里生成当天的一条综合记录（ID 形如 summary_YYYYMMDD），里面包含提取出的全部关键词和总结。也就是说，它每天只写入一条“每日新闻分析”记录，而不是把每个关键词拆成独立话题。你在 add_custom_topic.py --list 中看到的那条正是刚才运行后保存的这一天的结果；
 python main.py --broad-topic
 
 # 只爬取特定平台

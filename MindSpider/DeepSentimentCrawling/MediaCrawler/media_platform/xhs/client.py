@@ -16,11 +16,11 @@ from urllib.parse import urlencode
 
 import httpx
 from playwright.async_api import BrowserContext, Page
-from tenacity import retry, stop_after_attempt, wait_fixed
 
 import config
 from base.base_crawler import AbstractApiClient
 from tools import utils
+from tools.http_retry import request_with_retry
 
 
 from .exception import DataFetchError, IPBlockError
@@ -82,7 +82,6 @@ class XiaoHongShuClient(AbstractApiClient):
         self.headers.update(headers)
         return self.headers
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     async def request(self, method, url, **kwargs) -> Union[str, Any]:
         """
         封装httpx的公共请求方法，对请求响应做一些处理
@@ -96,8 +95,21 @@ class XiaoHongShuClient(AbstractApiClient):
         """
         # return response.text
         return_response = kwargs.pop("return_response", False)
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        async def _send():
+            async with httpx.AsyncClient(proxy=self.proxy) as client:
+                return await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        try:
+            response = await request_with_retry(
+                _send,
+                max_attempts=config.HTTP_RETRY_MAX_ATTEMPTS,
+                base_delay=config.HTTP_RETRY_BASE_DELAY,
+                jitter=config.HTTP_RETRY_JITTER,
+                log_prefix="[XiaoHongShuClient.request]",
+            )
+        except httpx.HTTPError as exc:
+            raise DataFetchError(f"HTTP请求失败: {exc}") from exc
 
         if response.status_code == 471 or response.status_code == 461:
             # someday someone maybe will bypass captcha
@@ -569,7 +581,6 @@ class XiaoHongShuClient(AbstractApiClient):
         data = {"original_url": f"{self._domain}/discovery/item/{note_id}"}
         return await self.post(uri, data=data, return_response=True)
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     async def get_note_by_id_from_html(
         self,
         note_id: str,
@@ -599,8 +610,20 @@ class XiaoHongShuClient(AbstractApiClient):
         if not enable_cookie:
             del copy_headers["Cookie"]
 
-        html = await self.request(
-            method="GET", url=url, return_response=True, headers=copy_headers
-        )
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                html = await self.request(
+                    method="GET", url=url, return_response=True, headers=copy_headers
+                )
+                return self._extractor.extract_note_detail_from_html(note_id, html)
+            except Exception as exc:
+                if attempt >= max_attempts:
+                    raise
+                delay = 1 + 0.5 * attempt
+                utils.logger.warning(
+                    f"[XiaoHongShuClient.get_note_by_id_from_html] 第 {attempt} 次拉取失败，将在 {delay:.1f}s 后重试，错误: {exc}"
+                )
+                await asyncio.sleep(delay)
 
-        return self._extractor.extract_note_detail_from_html(note_id, html)
+        return None

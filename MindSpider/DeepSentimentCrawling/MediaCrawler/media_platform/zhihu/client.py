@@ -17,13 +17,13 @@ from urllib.parse import urlencode
 import httpx
 from httpx import Response
 from playwright.async_api import BrowserContext, Page
-from tenacity import retry, stop_after_attempt, wait_fixed
 
 import config
 from base.base_crawler import AbstractApiClient
 from constant import zhihu as zhihu_constant
 from model.m_zhihu import ZhihuComment, ZhihuContent, ZhihuCreator
 from tools import utils
+from tools.http_retry import request_with_retry
 
 from .exception import DataFetchError, ForbiddenError
 from .field import SearchSort, SearchTime, SearchType
@@ -60,11 +60,10 @@ class ZhiHuClient(AbstractApiClient):
             raise Exception("d_c0 not found in cookies")
         sign_res = sign(url, self.default_headers["cookie"])
         headers = self.default_headers.copy()
-        headers['x-zst-81'] = sign_res["x-zst-81"]
-        headers['x-zse-96'] = sign_res["x-zse-96"]
+        headers["x-zst-81"] = sign_res["x-zst-81"]
+        headers["x-zse-96"] = sign_res["x-zse-96"]
         return headers
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     async def request(self, method, url, **kwargs) -> Union[str, Any]:
         """
         封装httpx的公共请求方法，对请求响应做一些处理
@@ -77,13 +76,27 @@ class ZhiHuClient(AbstractApiClient):
 
         """
         # return response.text
-        return_response = kwargs.pop('return_response', False)
+        return_response = kwargs.pop("return_response", False)
 
-        async with httpx.AsyncClient(proxy=self.proxy) as client:
-            response = await client.request(method, url, timeout=self.timeout, **kwargs)
+        async def _send():
+            async with httpx.AsyncClient(proxy=self.proxy) as client:
+                return await client.request(method, url, timeout=self.timeout, **kwargs)
+
+        try:
+            response = await request_with_retry(
+                _send,
+                max_attempts=config.HTTP_RETRY_MAX_ATTEMPTS,
+                base_delay=config.HTTP_RETRY_BASE_DELAY,
+                jitter=config.HTTP_RETRY_JITTER,
+                log_prefix="[ZhiHuClient.request]",
+            )
+        except httpx.HTTPError as exc:
+            raise DataFetchError(f"HTTP请求失败: {exc}") from exc
 
         if response.status_code != 200:
-            utils.logger.error(f"[ZhiHuClient.request] Requset Url: {url}, Request error: {response.text}")
+            utils.logger.error(
+                f"[ZhiHuClient.request] Requset Url: {url}, Request error: {response.text}"
+            )
             if response.status_code == 403:
                 raise ForbiddenError(response.text)
             elif response.status_code == 404:  # 如果一个content没有评论也是404
@@ -115,10 +128,16 @@ class ZhiHuClient(AbstractApiClient):
         """
         final_uri = uri
         if isinstance(params, dict):
-            final_uri += '?' + urlencode(params)
+            final_uri += "?" + urlencode(params)
         headers = await self._pre_headers(final_uri)
-        base_url = (zhihu_constant.ZHIHU_URL if "/p/" not in uri else zhihu_constant.ZHIHU_ZHUANLAN_URL)
-        return await self.request(method="GET", url=base_url + final_uri, headers=headers, **kwargs)
+        base_url = (
+            zhihu_constant.ZHIHU_URL
+            if "/p/" not in uri
+            else zhihu_constant.ZHIHU_ZHUANLAN_URL
+        )
+        return await self.request(
+            method="GET", url=base_url + final_uri, headers=headers, **kwargs
+        )
 
     async def pong(self) -> bool:
         """
@@ -134,9 +153,13 @@ class ZhiHuClient(AbstractApiClient):
                 ping_flag = True
                 utils.logger.info("[ZhiHuClient.pong] Ping zhihu successfully")
             else:
-                utils.logger.error(f"[ZhiHuClient.pong] Ping zhihu failed, response data: {res}")
+                utils.logger.error(
+                    f"[ZhiHuClient.pong] Ping zhihu failed, response data: {res}"
+                )
         except Exception as e:
-            utils.logger.error(f"[ZhiHuClient.pong] Ping zhihu failed: {e}, and try to login again...")
+            utils.logger.error(
+                f"[ZhiHuClient.pong] Ping zhihu failed: {e}, and try to login again..."
+            )
             ping_flag = False
         return ping_flag
 
@@ -201,7 +224,9 @@ class ZhiHuClient(AbstractApiClient):
             "vertical": note_type.value,
         }
         search_res = await self.get(uri, params)
-        utils.logger.info(f"[ZhiHuClient.get_note_by_keyword] Search result: {search_res}")
+        utils.logger.info(
+            f"[ZhiHuClient.get_note_by_keyword] Search result: {search_res}"
+        )
         return self._extractor.extract_contents_from_search(search_res)
 
     async def get_root_comments(
@@ -282,13 +307,17 @@ class ZhiHuClient(AbstractApiClient):
         offset: str = ""
         limit: int = 10
         while not is_end:
-            root_comment_res = await self.get_root_comments(content.content_id, content.content_type, offset, limit)
+            root_comment_res = await self.get_root_comments(
+                content.content_id, content.content_type, offset, limit
+            )
             if not root_comment_res:
                 break
             paging_info = root_comment_res.get("paging", {})
             is_end = paging_info.get("is_end")
             offset = self._extractor.extract_offset(paging_info)
-            comments = self._extractor.extract_comments(content, root_comment_res.get("data"))
+            comments = self._extractor.extract_comments(
+                content, root_comment_res.get("data")
+            )
 
             if not comments:
                 break
@@ -297,7 +326,9 @@ class ZhiHuClient(AbstractApiClient):
                 await callback(comments)
 
             result.extend(comments)
-            await self.get_comments_all_sub_comments(content, comments, crawl_interval=crawl_interval, callback=callback)
+            await self.get_comments_all_sub_comments(
+                content, comments, crawl_interval=crawl_interval, callback=callback
+            )
             await asyncio.sleep(crawl_interval)
         return result
 
@@ -331,13 +362,17 @@ class ZhiHuClient(AbstractApiClient):
             offset: str = ""
             limit: int = 10
             while not is_end:
-                child_comment_res = await self.get_child_comments(parment_comment.comment_id, offset, limit)
+                child_comment_res = await self.get_child_comments(
+                    parment_comment.comment_id, offset, limit
+                )
                 if not child_comment_res:
                     break
                 paging_info = child_comment_res.get("paging", {})
                 is_end = paging_info.get("is_end")
                 offset = self._extractor.extract_offset(paging_info)
-                sub_comments = self._extractor.extract_comments(content, child_comment_res.get("data"))
+                sub_comments = self._extractor.extract_comments(
+                    content, child_comment_res.get("data")
+                )
 
                 if not sub_comments:
                     break
@@ -362,7 +397,9 @@ class ZhiHuClient(AbstractApiClient):
         html_content: str = await self.get(uri, return_response=True)
         return self._extractor.extract_creator(url_token, html_content)
 
-    async def get_creator_answers(self, url_token: str, offset: int = 0, limit: int = 20) -> Dict:
+    async def get_creator_answers(
+        self, url_token: str, offset: int = 0, limit: int = 20
+    ) -> Dict:
         """
         获取创作者的回答
         Args:
@@ -376,15 +413,16 @@ class ZhiHuClient(AbstractApiClient):
         """
         uri = f"/api/v4/members/{url_token}/answers"
         params = {
-            "include":
-            "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,annotation_action,annotation_detail,collapse_reason,collapsed_by,suggest_edit,comment_count,can_comment,content,editable_content,attachment,voteup_count,reshipment_settings,comment_permission,created_time,updated_time,review_info,excerpt,paid_info,reaction_instruction,is_labeled,label_info,relationship.is_authorized,voting,is_author,is_thanked,is_nothelp;data[*].vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.vip_info;data[*].question.has_publishing_draft,relationship",
+            "include": "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,annotation_action,annotation_detail,collapse_reason,collapsed_by,suggest_edit,comment_count,can_comment,content,editable_content,attachment,voteup_count,reshipment_settings,comment_permission,created_time,updated_time,review_info,excerpt,paid_info,reaction_instruction,is_labeled,label_info,relationship.is_authorized,voting,is_author,is_thanked,is_nothelp;data[*].vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.vip_info;data[*].question.has_publishing_draft,relationship",
             "offset": offset,
             "limit": limit,
-            "order_by": "created"
+            "order_by": "created",
         }
         return await self.get(uri, params)
 
-    async def get_creator_articles(self, url_token: str, offset: int = 0, limit: int = 20) -> Dict:
+    async def get_creator_articles(
+        self, url_token: str, offset: int = 0, limit: int = 20
+    ) -> Dict:
         """
         获取创作者的文章
         Args:
@@ -397,15 +435,16 @@ class ZhiHuClient(AbstractApiClient):
         """
         uri = f"/api/v4/members/{url_token}/articles"
         params = {
-            "include":
-            "data[*].comment_count,suggest_edit,is_normal,thumbnail_extra_info,thumbnail,can_comment,comment_permission,admin_closed_comment,content,voteup_count,created,updated,upvoted_followees,voting,review_info,reaction_instruction,is_labeled,label_info;data[*].vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.vip_info;",
+            "include": "data[*].comment_count,suggest_edit,is_normal,thumbnail_extra_info,thumbnail,can_comment,comment_permission,admin_closed_comment,content,voteup_count,created,updated,upvoted_followees,voting,review_info,reaction_instruction,is_labeled,label_info;data[*].vessay_info;data[*].author.badge[?(type=best_answerer)].topics;data[*].author.vip_info;",
             "offset": offset,
             "limit": limit,
-            "order_by": "created"
+            "order_by": "created",
         }
         return await self.get(uri, params)
 
-    async def get_creator_videos(self, url_token: str, offset: int = 0, limit: int = 20) -> Dict:
+    async def get_creator_videos(
+        self, url_token: str, offset: int = 0, limit: int = 20
+    ) -> Dict:
         """
         获取创作者的视频
         Args:
@@ -425,7 +464,12 @@ class ZhiHuClient(AbstractApiClient):
         }
         return await self.get(uri, params)
 
-    async def get_all_anwser_by_creator(self, creator: ZhihuCreator, crawl_interval: float = 1.0, callback: Optional[Callable] = None) -> List[ZhihuContent]:
+    async def get_all_anwser_by_creator(
+        self,
+        creator: ZhihuCreator,
+        crawl_interval: float = 1.0,
+        callback: Optional[Callable] = None,
+    ) -> List[ZhihuContent]:
         """
         获取创作者的所有回答
         Args:
@@ -444,10 +488,14 @@ class ZhiHuClient(AbstractApiClient):
             res = await self.get_creator_answers(creator.url_token, offset, limit)
             if not res:
                 break
-            utils.logger.info(f"[ZhiHuClient.get_all_anwser_by_creator] Get creator {creator.url_token} answers: {res}")
+            utils.logger.info(
+                f"[ZhiHuClient.get_all_anwser_by_creator] Get creator {creator.url_token} answers: {res}"
+            )
             paging_info = res.get("paging", {})
             is_end = paging_info.get("is_end")
-            contents = self._extractor.extract_content_list_from_creator(res.get("data"))
+            contents = self._extractor.extract_content_list_from_creator(
+                res.get("data")
+            )
             if callback:
                 await callback(contents)
             all_contents.extend(contents)
@@ -481,7 +529,9 @@ class ZhiHuClient(AbstractApiClient):
                 break
             paging_info = res.get("paging", {})
             is_end = paging_info.get("is_end")
-            contents = self._extractor.extract_content_list_from_creator(res.get("data"))
+            contents = self._extractor.extract_content_list_from_creator(
+                res.get("data")
+            )
             if callback:
                 await callback(contents)
             all_contents.extend(contents)
@@ -515,7 +565,9 @@ class ZhiHuClient(AbstractApiClient):
                 break
             paging_info = res.get("paging", {})
             is_end = paging_info.get("is_end")
-            contents = self._extractor.extract_content_list_from_creator(res.get("data"))
+            contents = self._extractor.extract_content_list_from_creator(
+                res.get("data")
+            )
             if callback:
                 await callback(contents)
             all_contents.extend(contents)

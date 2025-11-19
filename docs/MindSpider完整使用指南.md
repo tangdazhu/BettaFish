@@ -86,6 +86,14 @@ python main.py --broad-topic  # Step 1: 提取话题
 python main.py --deep-sentiment --test  # Step 2: 爬取数据
 ```
 
+#### BroadTopicExtraction 结果说明
+
+- `python main.py --broad-topic` 会遍历 12+ 个资讯源收集热点，并调用大模型生成**单条**每日分析记录，写入 `daily_topics` 表，`topic_id` 形如 `summary_YYYYMMDD`，`topic_name` 固定为“每日新闻分析”。
+- 该记录的 `keywords` 字段保存所有提取出的热点词（JSON 数组），`topic_description` 保存当日总结。在 `python add_custom_topic.py --list` 中看到的就是这条记录，而不是若干独立话题。
+- 提取完成后，脚本会调用 `topic_extractor.get_search_keywords` 对原始关键词做二次筛选，仅保留少量最适合搜索的词，并写入 `data/daily_keywords.txt`，同时在日志中展示“为 DeepSentimentCrawling 准备的搜索关键词”。
+- 运行 `python main.py --deep-sentiment ...` 时，默认只会使用该筛选结果（通常 5~10 个关键词）进行跨平台搜索；如需扩展覆盖，可手动编辑 `data/daily_keywords.txt` 或再添加自定义话题。
+- 若当日已经运行过 `--broad-topic`，再次执行会更新同一天的记录；若希望保留历史结果，可通过 `--date YYYY-MM-DD` 指定日期或导出 `daily_topics` 表。
+
 ### 查看话题
 
 ```bash
