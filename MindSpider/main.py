@@ -292,7 +292,7 @@ class MindSpider:
                     logger.info(f"平台 {platform} 的日志将保存到: {log_file}")
 
             result = subprocess.run(
-                cmd, cwd=self.deep_sentiment_path, timeout=3600  # 60分钟超时
+                cmd, cwd=self.deep_sentiment_path, timeout=7200  # 60分钟超时
             )
 
             if result.returncode == 0:

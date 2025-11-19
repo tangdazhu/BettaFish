@@ -9,7 +9,7 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # 基础配置
-PLATFORM = "ks"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+PLATFORM = "zhihu"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
 KEYWORDS = "日外务省官员离开中国外交部，一言未发来一言未发走，中方称日方必须给中国人民一个明确交代，释放哪些信号？,如何评价谷歌正式发布的,Gemini,3？哪些信息值得关注？,越南的国食,Pho,河粉,为什么在中国只能失败？,如何评价,AL"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
 LOGIN_PHONE = ""  # 手机号登录时使用，仅当LOGIN_TYPE为phone时有效
