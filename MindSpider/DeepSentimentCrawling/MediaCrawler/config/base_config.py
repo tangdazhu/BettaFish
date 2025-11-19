@@ -9,9 +9,10 @@
 # 使用本代码即表示您同意遵守上述原则和LICENSE中的所有条款。
 
 # 基础配置
-PLATFORM = "zhihu"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
+PLATFORM = "xueqiu"  # 平台，xhs | dy | ks | bili | wb | tieba | zhihu
 KEYWORDS = "阿里巴巴,股价"  # 关键词搜索配置，以英文逗号分隔
 LOGIN_TYPE = "qrcode"  # qrcode or phone or cookie
+LOGIN_PHONE = ""  # 手机号登录时使用，仅当LOGIN_TYPE为phone时有效
 COOKIES = ""
 
 # 是否开启 IP 代理
@@ -113,4 +114,6 @@ from .ks_config import *
 from .weibo_config import *
 from .tieba_config import *
 from .zhihu_config import *
+from .xueqiu_config import *
+
 CRAWLER_TYPE = "search"  # 爬取类型，search(关键词搜索) | detail(帖子详情)| creator(创作者主页数据)

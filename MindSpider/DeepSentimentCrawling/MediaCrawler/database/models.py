@@ -4,8 +4,9 @@ from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 
+
 class BilibiliVideo(Base):
-    __tablename__ = 'bilibili_video'
+    __tablename__ = "bilibili_video"
     id = Column(Integer, primary_key=True)
     video_id = Column(BigInteger, nullable=False, index=True, unique=True)
     video_url = Column(Text, nullable=False)
@@ -27,10 +28,11 @@ class BilibiliVideo(Base):
     video_danmaku = Column(Text)
     video_comment = Column(Text)
     video_cover_url = Column(Text)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
+
 
 class BilibiliVideoComment(Base):
-    __tablename__ = 'bilibili_video_comment'
+    __tablename__ = "bilibili_video_comment"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -45,10 +47,11 @@ class BilibiliVideoComment(Base):
     create_time = Column(BigInteger)
     sub_comment_count = Column(Text)
     parent_comment_id = Column(String(255))
-    like_count = Column(Text, default='0')
+    like_count = Column(Text, default="0")
+
 
 class BilibiliUpInfo(Base):
-    __tablename__ = 'bilibili_up_info'
+    __tablename__ = "bilibili_up_info"
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, index=True)
     nickname = Column(Text)
@@ -62,8 +65,9 @@ class BilibiliUpInfo(Base):
     user_rank = Column(Integer)
     is_official = Column(Integer)
 
+
 class BilibiliContactInfo(Base):
-    __tablename__ = 'bilibili_contact_info'
+    __tablename__ = "bilibili_contact_info"
     id = Column(Integer, primary_key=True)
     up_id = Column(BigInteger, index=True)
     fan_id = Column(BigInteger, index=True)
@@ -76,8 +80,9 @@ class BilibiliContactInfo(Base):
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
 
+
 class BilibiliUpDynamic(Base):
-    __tablename__ = 'bilibili_up_dynamic'
+    __tablename__ = "bilibili_up_dynamic"
     id = Column(Integer, primary_key=True)
     dynamic_id = Column(BigInteger, index=True)
     user_id = Column(String(255))
@@ -91,8 +96,9 @@ class BilibiliUpDynamic(Base):
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
 
+
 class DouyinAweme(Base):
-    __tablename__ = 'douyin_aweme'
+    __tablename__ = "douyin_aweme"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     sec_uid = Column(String(255))
@@ -118,10 +124,11 @@ class DouyinAweme(Base):
     video_download_url = Column(Text)
     music_download_url = Column(Text)
     note_download_url = Column(Text)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
+
 
 class DouyinAwemeComment(Base):
-    __tablename__ = 'douyin_aweme_comment'
+    __tablename__ = "douyin_aweme_comment"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     sec_uid = Column(String(255))
@@ -139,11 +146,12 @@ class DouyinAwemeComment(Base):
     create_time = Column(BigInteger)
     sub_comment_count = Column(Text)
     parent_comment_id = Column(String(255))
-    like_count = Column(Text, default='0')
-    pictures = Column(Text, default='')
+    like_count = Column(Text, default="0")
+    pictures = Column(Text, default="")
+
 
 class DyCreator(Base):
-    __tablename__ = 'dy_creator'
+    __tablename__ = "dy_creator"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -158,8 +166,9 @@ class DyCreator(Base):
     interaction = Column(Text)
     videos_count = Column(String(255))
 
+
 class KuaishouVideo(Base):
-    __tablename__ = 'kuaishou_video'
+    __tablename__ = "kuaishou_video"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(64))
     nickname = Column(Text)
@@ -176,10 +185,11 @@ class KuaishouVideo(Base):
     video_url = Column(Text)
     video_cover_url = Column(Text)
     video_play_url = Column(Text)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
+
 
 class KuaishouVideoComment(Base):
-    __tablename__ = 'kuaishou_video_comment'
+    __tablename__ = "kuaishou_video_comment"
     id = Column(Integer, primary_key=True)
     user_id = Column(Text)
     nickname = Column(Text)
@@ -192,15 +202,16 @@ class KuaishouVideoComment(Base):
     create_time = Column(BigInteger)
     sub_comment_count = Column(Text)
 
+
 class WeiboNote(Base):
-    __tablename__ = 'weibo_note'
+    __tablename__ = "weibo_note"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
     avatar = Column(Text)
     gender = Column(Text)
     profile_url = Column(Text)
-    ip_location = Column(Text, default='')
+    ip_location = Column(Text, default="")
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
     note_id = Column(BigInteger, index=True)
@@ -211,17 +222,18 @@ class WeiboNote(Base):
     comments_count = Column(Text)
     shared_count = Column(Text)
     note_url = Column(Text)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
+
 
 class WeiboNoteComment(Base):
-    __tablename__ = 'weibo_note_comment'
+    __tablename__ = "weibo_note_comment"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
     avatar = Column(Text)
     gender = Column(Text)
     profile_url = Column(Text)
-    ip_location = Column(Text, default='')
+    ip_location = Column(Text, default="")
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
     comment_id = Column(BigInteger, index=True)
@@ -233,8 +245,9 @@ class WeiboNoteComment(Base):
     sub_comment_count = Column(Text)
     parent_comment_id = Column(String(255))
 
+
 class WeiboCreator(Base):
-    __tablename__ = 'weibo_creator'
+    __tablename__ = "weibo_creator"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -248,8 +261,9 @@ class WeiboCreator(Base):
     fans = Column(Text)
     tag_list = Column(Text)
 
+
 class XhsCreator(Base):
-    __tablename__ = 'xhs_creator'
+    __tablename__ = "xhs_creator"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -264,8 +278,9 @@ class XhsCreator(Base):
     interaction = Column(Text)
     tag_list = Column(Text)
 
+
 class XhsNote(Base):
-    __tablename__ = 'xhs_note'
+    __tablename__ = "xhs_note"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -287,11 +302,12 @@ class XhsNote(Base):
     image_list = Column(Text)
     tag_list = Column(Text)
     note_url = Column(Text)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
     xsec_token = Column(Text)
 
+
 class XhsNoteComment(Base):
-    __tablename__ = 'xhs_note_comment'
+    __tablename__ = "xhs_note_comment"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(255))
     nickname = Column(Text)
@@ -308,49 +324,52 @@ class XhsNoteComment(Base):
     parent_comment_id = Column(String(255))
     like_count = Column(Text)
 
+
 class TiebaNote(Base):
-    __tablename__ = 'tieba_note'
+    __tablename__ = "tieba_note"
     id = Column(Integer, primary_key=True)
     note_id = Column(String(644), index=True)
     title = Column(Text)
     desc = Column(Text)
     note_url = Column(Text)
     publish_time = Column(String(255), index=True)
-    user_link = Column(Text, default='')
-    user_nickname = Column(Text, default='')
-    user_avatar = Column(Text, default='')
-    tieba_id = Column(String(255), default='')
+    user_link = Column(Text, default="")
+    user_nickname = Column(Text, default="")
+    user_avatar = Column(Text, default="")
+    tieba_id = Column(String(255), default="")
     tieba_name = Column(Text)
     tieba_link = Column(Text)
     total_replay_num = Column(Integer, default=0)
     total_replay_page = Column(Integer, default=0)
-    ip_location = Column(Text, default='')
+    ip_location = Column(Text, default="")
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
-    source_keyword = Column(Text, default='')
+    source_keyword = Column(Text, default="")
+
 
 class TiebaComment(Base):
-    __tablename__ = 'tieba_comment'
+    __tablename__ = "tieba_comment"
     id = Column(Integer, primary_key=True)
     comment_id = Column(String(255), index=True)
-    parent_comment_id = Column(String(255), default='')
+    parent_comment_id = Column(String(255), default="")
     content = Column(Text)
-    user_link = Column(Text, default='')
-    user_nickname = Column(Text, default='')
-    user_avatar = Column(Text, default='')
-    tieba_id = Column(String(255), default='')
+    user_link = Column(Text, default="")
+    user_nickname = Column(Text, default="")
+    user_avatar = Column(Text, default="")
+    tieba_id = Column(String(255), default="")
     tieba_name = Column(Text)
     tieba_link = Column(Text)
     publish_time = Column(String(255), index=True)
-    ip_location = Column(Text, default='')
+    ip_location = Column(Text, default="")
     sub_comment_count = Column(Integer, default=0)
     note_id = Column(String(255), index=True)
     note_url = Column(Text)
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
 
+
 class TiebaCreator(Base):
-    __tablename__ = 'tieba_creator'
+    __tablename__ = "tieba_creator"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(64))
     user_name = Column(Text)
@@ -364,8 +383,9 @@ class TiebaCreator(Base):
     fans = Column(Text)
     registration_duration = Column(Text)
 
+
 class ZhihuContent(Base):
-    __tablename__ = 'zhihu_content'
+    __tablename__ = "zhihu_content"
     id = Column(Integer, primary_key=True)
     content_id = Column(String(64), index=True)
     content_type = Column(Text)
@@ -392,8 +412,9 @@ class ZhihuContent(Base):
     # 副作用：无
     # 回滚策略：还原此行
 
+
 class ZhihuComment(Base):
-    __tablename__ = 'zhihu_comment'
+    __tablename__ = "zhihu_comment"
     id = Column(Integer, primary_key=True)
     comment_id = Column(String(64), index=True)
     parent_comment_id = Column(String(64))
@@ -412,8 +433,9 @@ class ZhihuComment(Base):
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)
 
+
 class ZhihuCreator(Base):
-    __tablename__ = 'zhihu_creator'
+    __tablename__ = "zhihu_creator"
     id = Column(Integer, primary_key=True)
     user_id = Column(String(64), unique=True, index=True)
     user_link = Column(Text)
@@ -430,5 +452,65 @@ class ZhihuCreator(Base):
     article_count = Column(Integer, default=0)
     column_count = Column(Integer, default=0)
     get_voteup_count = Column(Integer, default=0)
+    add_ts = Column(BigInteger)
+    last_modify_ts = Column(BigInteger)
+
+
+class XueqiuStatus(Base):
+    __tablename__ = "xueqiu_status"
+    id = Column(Integer, primary_key=True)
+    status_id = Column(String(64), index=True)
+    status_type = Column(Text)
+    title = Column(Text)
+    text = Column(Text)
+    target_text = Column(Text)
+    topic_desc = Column(Text)
+    source = Column(Text)
+    status_url = Column(Text)
+    like_count = Column(Text)
+    reply_count = Column(Text)
+    retweet_count = Column(Text)
+    reward_count = Column(Text)
+    created_at = Column(BigInteger, index=True)
+    user_id = Column(String(64), index=True)
+    screen_name = Column(Text)
+    profile_image = Column(Text)
+    verified_description = Column(Text)
+    source_keyword = Column(Text, default="")
+    add_ts = Column(BigInteger)
+    last_modify_ts = Column(BigInteger)
+
+
+class XueqiuComment(Base):
+    __tablename__ = "xueqiu_comment"
+    id = Column(Integer, primary_key=True)
+    comment_id = Column(String(64), index=True)
+    status_id = Column(String(64), index=True)
+    user_id = Column(String(64))
+    nickname = Column(Text)
+    avatar = Column(Text)
+    content = Column(Text)
+    like_count = Column(Text)
+    parent_comment_id = Column(String(64))
+    reply_to_user = Column(Text)
+    created_at = Column(BigInteger, index=True)
+    add_ts = Column(BigInteger)
+    last_modify_ts = Column(BigInteger)
+
+
+class XueqiuCreator(Base):
+    __tablename__ = "xueqiu_creator"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(64), index=True)
+    screen_name = Column(Text)
+    description = Column(Text)
+    city = Column(Text)
+    province = Column(Text)
+    profile_image = Column(Text)
+    followers_count = Column(Text)
+    friends_count = Column(Text)
+    statuses_count = Column(Text)
+    verified_type = Column(Text)
+    verified_description = Column(Text)
     add_ts = Column(BigInteger)
     last_modify_ts = Column(BigInteger)

@@ -14,6 +14,7 @@ PLATFORM_NAME_MAP = {
     "wb": "weibo",
     "tieba": "tieba",
     "zhihu": "zhihu",
+    "xueqiu": "xueqiu",
 }
 
 

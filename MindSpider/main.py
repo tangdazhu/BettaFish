@@ -427,7 +427,7 @@ def main():
         "--platforms",
         type=str,
         nargs="+",
-        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"],
+        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu", "xueqiu"],
         help="指定爬取平台",
     )
     parser.add_argument(

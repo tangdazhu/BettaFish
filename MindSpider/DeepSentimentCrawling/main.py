@@ -221,14 +221,14 @@ def main():
     parser.add_argument(
         "--platform",
         type=str,
-        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"],
+        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu", "xueqiu"],
         help="指定单个平台进行爬取",
     )
     parser.add_argument(
         "--platforms",
         type=str,
         nargs="+",
-        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu"],
+        choices=["xhs", "dy", "ks", "bili", "wb", "tieba", "zhihu", "xueqiu"],
         help="指定多个平台进行爬取",
     )
 

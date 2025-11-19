@@ -24,6 +24,7 @@ from media_platform.tieba import TieBaCrawler
 from media_platform.weibo import WeiboCrawler
 from media_platform.xhs import XiaoHongShuCrawler
 from media_platform.zhihu import ZhihuCrawler
+from media_platform.xueqiu import XueQiuCrawler
 from tools.async_file_writer import AsyncFileWriter
 from var import crawler_type_var
 
@@ -37,6 +38,7 @@ class CrawlerFactory:
         "wb": WeiboCrawler,
         "tieba": TieBaCrawler,
         "zhihu": ZhihuCrawler,
+        "xueqiu": XueQiuCrawler,
     }
 
     @staticmethod
@@ -69,8 +71,6 @@ async def main():
         print(f"Database {args.init_db} initialized successfully.")
         return  # Exit the main function cleanly
 
-
-
     crawler = CrawlerFactory.create_crawler(platform=config.PLATFORM)
     await crawler.start()
 
@@ -79,8 +79,7 @@ async def main():
     if config.SAVE_DATA_OPTION == "json" and config.ENABLE_GET_WORDCLOUD:
         try:
             file_writer = AsyncFileWriter(
-                platform=config.PLATFORM,
-                crawler_type=crawler_type_var.get()
+                platform=config.PLATFORM, crawler_type=crawler_type_var.get()
             )
             await file_writer.generate_wordcloud_from_comments()
         except Exception as e:
